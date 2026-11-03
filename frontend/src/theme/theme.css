@@ -1,0 +1,44 @@
+/* Design tokens live here. Copy a [data-preset] group to add your own skin,
+   then register its key in theme.ts and the index.html bootstrap allowlist. */
+:root {
+  color-scheme: light;
+  --page: #f5f7f8; --surface: #ffffff; --surface-soft: #f0f4f4; --ink: #172d32;
+  --muted: #576d72; --line: #dce5e7; --accent: #087a68; --accent-hover: #056152;
+  --on-accent: #ffffff; --highlight: #316e99; --accent-soft: #e4f3ee; --danger: #b32f38; --danger-soft: #fff0f0;
+  --warning: #805a0e; --warning-soft: #fff7df; --success: #246b50; --focus: #328bcd;
+  --overlay: #102b3140; --shadow: 0 14px 50px #102b3114;
+  --font: 'Segoe UI', 'Microsoft YaHei', sans-serif; --mono: Consolas, monospace;
+  --text-xs: 11px; --text-sm: 12px; --text-md: 14px; --text-lg: 16px; --text-xl: 20px; --text-hero: 30px;
+  --weight: 400; --medium: 500; --bold: 600; --leading: 1.7;
+  --radius-sm: 6px; --radius: 12px; --radius-lg: 18px; --radius-pill: 999px;
+  --s0: 0; --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s7: 32px; --s8: 40px; --s9: 56px; --s10: 80px;
+  --hairline: 1px; --outline: 2px; --topbar: 76px; --sidebar: 260px; --evidence: 370px;
+  --chat-width: 900px; --control: 36px; --avatar: 44px; --hero-avatar: 62px;
+  --composer-min: 88px; --composer-max: 220px; --drawer-width: 390px;
+  --panel-border: solid; --density: 1; --tracking: .09em;
+  font-family: var(--font); font-size: var(--text-md); font-synthesis: none;
+  color: var(--ink); background: var(--page);
+}
+:root[data-preset="it"] { --highlight: #316e99; --accent: #087a68; --accent-hover: #056152; --accent-soft: #e4f3ee; }
+:root[data-preset="service"] { --highlight: #3066a2; --accent: #a84a17; --accent-hover: #873912; --accent-soft: #fff0e5; --radius: 16px; --radius-lg: 24px; --font: 'Trebuchet MS', 'Microsoft YaHei', sans-serif; --panel-border: solid; --density: 1.05; }
+:root[data-preset="general"] { --highlight: #655a9a; --accent: #4f586e; --accent-hover: #343f55; --accent-soft: #eceef5; --radius: 8px; --radius-lg: 12px; --font: 'Segoe UI', 'Microsoft YaHei', sans-serif; --text-md: 13px; --panel-border: dashed; --density: .95; }
+:root[data-theme="dark"] {
+  color-scheme: dark; --page: #141e24; --surface: #1c2a31; --surface-soft: #23353d;
+  --ink: #ecf3f4; --muted: #b0c1c8; --line: #3a505c; --accent: #7adebf;
+  --accent-hover: #a1efd6; --accent-soft: #203f3b; --on-accent: #12251f;
+  --highlight: #9ecdf1; --danger: #ffb0b7; --danger-soft: #402a31; --warning: #f4d38b; --warning-soft: #393323;
+  --success: #93d9b8; --focus: #91ceff; --overlay: #00000066; --shadow: 0 14px 50px #00000033;
+}
+:root[data-theme="dark"][data-preset="service"] { --highlight: #a8ceff; --accent: #ffbd8e; --accent-hover: #ffd9b9; --accent-soft: #493327; --on-accent: #332014; }
+:root[data-theme="dark"][data-preset="general"] { --highlight: #d0bffc; --accent: #bdc9ed; --accent-hover: #dbe2fa; --accent-soft: #303b54; --on-accent: #20283b; }
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark; --page: #141e24; --surface: #1c2a31; --surface-soft: #23353d;
+    --ink: #ecf3f4; --muted: #b0c1c8; --line: #3a505c; --accent: #7adebf;
+    --accent-hover: #a1efd6; --accent-soft: #203f3b; --on-accent: #12251f;
+    --highlight: #9ecdf1; --danger: #ffb0b7; --danger-soft: #402a31; --warning: #f4d38b; --warning-soft: #393323;
+    --success: #93d9b8; --focus: #91ceff; --overlay: #00000066; --shadow: 0 14px 50px #00000033;
+  }
+  :root[data-theme="system"][data-preset="service"] { --highlight: #a8ceff; --accent: #ffbd8e; --accent-hover: #ffd9b9; --accent-soft: #493327; --on-accent: #332014; }
+  :root[data-theme="system"][data-preset="general"] { --highlight: #d0bffc; --accent: #bdc9ed; --accent-hover: #dbe2fa; --accent-soft: #303b54; --on-accent: #20283b; }
+}

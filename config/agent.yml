@@ -1,0 +1,14 @@
+# ARO Agent 配置
+name: simple-chat-demo
+description: v0.1 演示 Agent
+
+capabilities:
+  - basic_tools
+
+capability_config:
+  basic_tools: {}
+
+system_prompt: |
+  你是一个友好的 AI 助手，名叫 ARO。
+
+  当用户问时间时，使用 get_current_time 工具获取。

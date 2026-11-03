@@ -1,0 +1,44 @@
+"""Capability assembly for human approval middleware."""
+
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from core.kernel.capability import Capability
+from core.kernel.middleware import Middleware
+from core.tools.base import BaseTool
+
+from .approval_manager import ApprovalManager
+from .middleware import HITLMiddleware
+
+
+class HITLConfig(BaseModel):
+    """Only CLI approval is supported by this slice."""
+
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["cli", "api"] = "cli"
+    timeout_seconds: float = Field(default=300, gt=0, le=600)
+
+
+class HITLCapability(Capability):
+    """Expose HITL as a middleware and no tools."""
+
+    def __init__(self, config: dict[str, Any], tool_map: dict[str, BaseTool] | None = None) -> None:
+        settings = HITLConfig.model_validate(config)
+        self.approval_manager = ApprovalManager(settings.mode, settings.timeout_seconds)
+        self.middleware = HITLMiddleware(self.approval_manager, tool_map)
+
+    @property
+    def name(self) -> str:
+        return "hitl"
+
+    def tools(self) -> list[BaseTool]:
+        return []
+
+    def middlewares(self) -> list[Middleware]:
+        return [self.middleware]
+
+
+def get_capability(config: dict[str, Any]) -> Capability:
+    """Standard plugin factory; tools are bound through the middleware contract."""
+    return HITLCapability(config)

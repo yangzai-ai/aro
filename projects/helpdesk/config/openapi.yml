@@ -1,0 +1,91 @@
+openapi: 3.0.3
+info:
+  title: Helpdesk read API example
+  version: 1.2.0
+  description: Read-only HTTP example matching the helpdesk repository routes; configure
+    the service base URL separately.
+paths:
+  /tickets:
+    get:
+      operationId: query_tickets
+      summary: Query IT support tickets
+      parameters:
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - open
+          - assigned
+          - in_progress
+          - resolved
+          - closed
+      - name: priority
+        in: query
+        schema:
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+          - urgent
+      - name: category
+        in: query
+        schema:
+          type: string
+          enum:
+          - hardware
+          - software
+          - network
+          - account
+          - other
+      - name: assignee
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: JSON array of support tickets
+  /tickets/{ticket_id}/history:
+    get:
+      operationId: get_ticket_history
+      summary: Read ticket operation history
+      parameters:
+      - name: ticket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          default: 10
+      responses:
+        '200':
+          description: JSON array of ticket history entries
+  /tickets/duplicates:
+    get:
+      operationId: check_duplicate_tickets
+      summary: Find similar open tickets
+      parameters:
+      - name: title
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: category
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - hardware
+          - software
+          - network
+          - account
+          - other
+      responses:
+        '200':
+          description: JSON array of similar open tickets

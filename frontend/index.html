@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="system" data-preset="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ARO · 智能体工作台</title>
+    <script>
+      // Apply preferences before CSS/React render, including storage-disabled browsers.
+      try {
+        var theme = localStorage.getItem('aro.theme');
+        var preset = localStorage.getItem('aro.preset');
+        if (['light', 'dark', 'system'].includes(theme)) document.documentElement.dataset.theme = theme;
+        if (['it', 'service', 'general'].includes(preset)) document.documentElement.dataset.preset = preset;
+      } catch (_) {}
+    </script>
+  </head>
+  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
+</html>

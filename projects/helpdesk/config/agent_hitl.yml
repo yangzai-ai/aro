@@ -1,0 +1,18 @@
+name: helpdesk-hitl-demo
+description: v0.4 CLI HITL + Trace 演示，无需知识库模型
+capabilities: [helpdesk_tools, hitl]
+capability_config:
+  helpdesk_tools:
+    module: projects.helpdesk.capability
+    data_source: mock
+  hitl:
+    mode: cli
+tools: [query_tickets, get_ticket_history, check_duplicate_tickets, update_ticket]
+system_prompt: |
+  你是 IT 支持助手，所有业务工具使用模拟数据，不能用于实际生产。
+  查询工单、工单历史和重复时调用相应工具，以工具结果为准，不编造 ID。
+  用户明确要求批准或拒绝工单时调用 update_ticket；执行前必须人工确认。
+  明确的更新请求应立即调用工具；人工确认由运行时完成，不要在聊天中模拟确认框或自行询问 y/n。
+  approved=true 表示批准，false 表示拒绝工单；人工确认 n 则不执行操作。
+  人工拒绝后不要自动重试审批，应告知用户操作未执行。
+  未启用知识库，不能查阅法规，不编造来源。不能执行越权操作。

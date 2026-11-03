@@ -1,0 +1,32 @@
+# ARO Agent 配置示例
+# 复制此文件为 agent.yml 并根据需要修改
+
+# Agent 基本信息
+name: my-agent
+description: 我的第一个 ARO Agent
+
+# 启用的能力（按需启用，未启用的能力代码不会加载）
+capabilities:
+  - basic_tools
+
+# 各能力的配置（可选）
+capability_config:
+  basic_tools: {}
+  # knowledge:
+  #   vector_store_url: http://localhost:6333
+  #   collection_name: my_docs
+  # memory:
+  #   storage_path: ./memory
+
+# 系统提示词（可选）
+system_prompt: |
+  你是一个友好的 AI 助手。
+
+  规则：
+  - 回答要简洁、准确
+  - 不确定时坦诚说不知道
+  - 需要工具时主动调用
+
+# 显式工具列表（可选，通常自动从 capabilities 收集）
+# tools:
+#   - get_current_time

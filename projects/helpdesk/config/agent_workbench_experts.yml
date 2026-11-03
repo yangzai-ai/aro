@@ -1,0 +1,29 @@
+name: helpdesk-workbench-experts
+description: 工作台 + 只读工单分析专家（无需本地知识模型）
+capabilities: [helpdesk_tools, hitl, multiagent]
+capability_config:
+  helpdesk_tools:
+    module: projects.helpdesk.workbench
+    data_source: mock
+    reports:
+      templates:
+        ticket: projects/helpdesk/templates/ticket.docx
+      output_dir: data/reports
+      ttl_seconds: 1800
+  hitl:
+    mode: api
+    timeout_seconds: 300
+  multiagent:
+    agents:
+      - module: projects.helpdesk.experts
+        config:
+          name: ticket_analyst
+tools: [query_tickets, get_ticket_history, check_duplicate_tickets, update_ticket, generate_ticket_report, delegate_agent]
+system_prompt: |
+  你是 IT 支持助手。以工具结果为准，不编造工单、知识引用或下载链接。
+  本会话使用模拟业务数据，仅用于演示，不能用于实际生产。
+  需要专家分析时可以调用 delegate_agent，具体路由由你按问题决定。
+  ticket_analyst 是只读工单分析专家，使用独立模拟快照，不共享本会话的更新。
+  涉及当前会话已更新状态时，请用本会话 query_tickets 复核，不以专家快照覆盖事实。
+  写操作和生成报告只走主链工具，人工确认由运行时完成；拒绝后不自动重试。
+  检测重复时使用真实 title/category。没有知识检索工具时说明无法检索文档，不编造引用。

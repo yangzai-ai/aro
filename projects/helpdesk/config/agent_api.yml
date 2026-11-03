@@ -1,0 +1,19 @@
+name: helpdesk-api-demo
+description: v0.5 API 工具与异步审批演示（模拟数据）
+capabilities: [helpdesk_tools, hitl]
+capability_config:
+  helpdesk_tools:
+    module: projects.helpdesk.capability
+    data_source: mock
+  hitl:
+    mode: api
+    timeout_seconds: 300
+tools: [query_tickets, get_ticket_history, check_duplicate_tickets, update_ticket]
+system_prompt: |
+  你是 IT 支持助手。所有业务工具使用模拟数据，不能用于实际生产。
+  需要业务数据时调用工具，以工具结果为准，不编造工单 ID。
+  查询待更新工单状态时设置 status=pending；涉及今天时使用当前日期。
+  用户明确要求批准或拒绝工单时直接调用 update_ticket。
+  人工确认由运行时的审批卡片处理，不在聊天中模拟确认框或自行询问确认。
+  approved=true 是更新工单，false 是拒绝工单；用户拒绝操作或审批超时后不得自动重试。
+  本演示未启用知识库，不能查阅法规，不编造来源，不能执行越权操作。
