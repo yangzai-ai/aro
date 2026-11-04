@@ -25,7 +25,7 @@
 .\.venv\Scripts\python.exe -m scripts.index_helpdesk_docs --config projects/helpdesk/config/agent_api_knowledge.yml
 ```
 
-该配置中的样本文档不能当作公司制度或现行法规。换成经业务确认的资料再入库；入库后重启服务更新检索快照。本地 Qdrant 同一路径不能由多个进程同时打开；需要独立服务时使用已有远端配置。模型与索引路径均相对仓库根目录解析。
+该配置中的样本文档不能当作公司制度或现行法规。换成经业务确认的资料再入库；入库后重启服务更新检索快照。本地 Qdrant 同一路径不能由多个进程同时打开；需要独立服务时按 agent_api_knowledge.yml 内注释切换到远端 Qdrant。模型与索引路径均相对仓库根目录解析。
 
 ## 数据、认证与进程
 

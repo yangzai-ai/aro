@@ -13,6 +13,10 @@ capability_config:
     timeout_seconds: 300
   knowledge:
     collection_name: helpdesk_kb
+    # 远端部署时删除 qdrant_path，改用下列字段（不能同时配置）：
+    # qdrant_url: http://127.0.0.1:6333
+    # qdrant_timeout_seconds: 15
+    # qdrant_api_key_env: ARO_QDRANT_API_KEY  # 真值只放环境变量
     qdrant_path: ./data/qdrant
     docs_dir: projects/helpdesk/docs
     device: cuda
