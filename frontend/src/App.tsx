@@ -168,15 +168,15 @@ export default function App() {
   });
   const openHistory = (record: Conversation) => {
     if (busy || resetting) return;
-    generation.current++; panelController.current?.abort(); expertController.current?.abort();
+    generation.current++; panelController.current?.abort();
     selection.current = ''; setPanel(null); setSteps([]); setTrace(null); setApproval(null); setDownloading(''); setError(''); setSuggestion(null);
     setSelectedExpert(record.targetAgent || null);
     setActive(record.id); sessionValue('aro.active', record.id); setMessages(record.messages); recordPreset.current = record.preset;
     sessionId.current = record.closed ? null : record.sessionId;
     setAvailability(record.closed || !record.sessionId ? 'expired' : 'checking');
-    setPanelStatus('正在验证服务端会话…'); setExperts([]);
+    setPanelStatus('正在验证服务端会话…');
     if (!record.closed && record.sessionId) { if (record.targetAgent) { setAvailability('live'); setPanelStatus('专家直连会话将在发送时校验；不提供工作台面板。'); } else { void refresh(record.sessionId, generation.current, '', null); } }
-    else { setPanelStatus('会话已关闭或过期，仅可查看记录。'); setExpertStatus('历史记录的专家目录不可用。'); }
+    else { setPanelStatus('会话已关闭或过期，仅可查看记录。'); }
     if (window.innerWidth < 800) setNavOpen(false);
   };
   const selectExpert = (name: string | null) => {
@@ -187,7 +187,7 @@ export default function App() {
     if (existing) { openHistory(existing); return; }
     generation.current++; panelController.current?.abort();
     sessionId.current = null; sessionValue('aro.active', null); sessionValue('aro.session', null);
-    setSelectedExpert(name); setActive(null); setSelectedExpert(null); setAvailability('new'); setMessages([]); setPanel(null); setSteps([]); setTrace(null); setApproval(null); setError(''); setDownloading(''); setSuggestion(null); selection.current = '';
+    setSelectedExpert(name); setActive(null); setAvailability('new'); setMessages([]); setPanel(null); setSteps([]); setTrace(null); setApproval(null); setError(''); setDownloading(''); setSuggestion(null); selection.current = '';
     setPanelStatus(name ? '向该专家发送问题后建立独立会话。' : '向总控发送问题后建立会话。');
   };
   const changeToken = (value: string) => {

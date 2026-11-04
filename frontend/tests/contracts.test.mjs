@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from 'esbuild';
 
-// Vite already uses esbuild; no test dependency or browser runtime is added.
+// Use Vite's existing esbuild to load the typed modules under test.
 async function moduleAt(entry) {
   const result = await build({ entryPoints: [entry], bundle: true, write: false, platform: 'node', format: 'esm', jsx: 'automatic' });
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
