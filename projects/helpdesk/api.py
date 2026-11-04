@@ -9,7 +9,6 @@ from fastapi.responses import Response
 from api.app import create_app as create_base_app
 from api.auth import require_auth
 from api.settings import APISettings
-from capabilities.multiagent.capability import MultiAgentCapability
 from core.kernel.lifecycle import wait_for_cleanup
 from projects.helpdesk.workbench import Workbench
 
@@ -47,24 +46,10 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
             raise HTTPException(503, "态势读取失败，请检查数据源。") from exc
 
     @app.get("/api/helpdesk/agents", dependencies=[Depends(require_auth)])
-    async def agents(
-        x_aro_session: str | None = Header(default=None, max_length=64),
-    ) -> list[dict[str, str]]:
-        """Describe only the specialists available to this owned workbench session."""
-        await store.expire()
-        owned(x_aro_session)
-        session = store.sessions[x_aro_session or ""]
-        capability = next(
-            (c for c in session.engine.capabilities if isinstance(c, MultiAgentCapability)), None
-        )
-        return (
-            [
-                {"name": item.name, "description": item.description}
-                for item in capability.registry.catalogue()
-            ]
-            if capability is not None
-            else []
-        )
+    async def agents() -> list[dict[str, str]]:
+        """Read the configured catalogue even before a conversation exists."""
+        store.load_experts()
+        return [{"name": item.name, "description": item.description} for item in store.experts]
 
     @app.get("/api/helpdesk/artifacts/{artifact_id}", dependencies=[Depends(require_auth)])
     async def download(

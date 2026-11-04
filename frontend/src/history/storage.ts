@@ -3,6 +3,7 @@ import type { Preset } from '../theme/theme';
 
 export interface Conversation {
   id: string; sessionId: string | null; title: string; updated: number;
+  targetAgent?: string | null;
   preset: Preset; messages: ChatMessage[]; closed: boolean;
 }
 export function readHistory(): { records: Conversation[]; available: boolean } {
@@ -11,7 +12,7 @@ export function readHistory(): { records: Conversation[]; available: boolean } {
     if (!Array.isArray(data)) throw new Error('Invalid history');
     const records = data.filter((item): item is Conversation => item && typeof item.id === 'string' &&
       (item.sessionId === null || typeof item.sessionId === 'string') && typeof item.title === 'string' &&
-      typeof item.updated === 'number' && ['it', 'service', 'general'].includes(item.preset) && typeof item.closed === 'boolean' &&
+      (item.targetAgent === undefined || item.targetAgent === null || typeof item.targetAgent === 'string') && typeof item.updated === 'number' && ['it', 'service', 'general'].includes(item.preset) && typeof item.closed === 'boolean' &&
       Array.isArray(item.messages) && item.messages.every((m: Partial<ChatMessage>) => typeof m.id === 'string' && typeof m.text === 'string' && ['user', 'assistant'].includes(m.role || '')));
     return { records, available: true };
   } catch { return { records: [], available: false }; }

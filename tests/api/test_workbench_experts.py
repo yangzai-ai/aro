@@ -1,4 +1,4 @@
-"""Real project expert assembly, owned catalogue and read-only delegation."""
+"""Real project expert assembly, global catalogue and isolated direct sessions."""
 
 import time
 from types import SimpleNamespace
@@ -17,7 +17,7 @@ from tests.api.test_workbench import ScenarioProvider
 
 
 @pytest.mark.parametrize("enabled", [True, False])
-async def test_owned_expert_catalogue_auth_expiry_and_close(monkeypatch, enabled):
+async def test_global_expert_catalogue_auth_independent_of_session_lifecycle(monkeypatch, enabled):
     settings = LLMConfig(OPENAI_API_KEY="unused", OPENAI_API_BASE="http://unused.test")
     monkeypatch.setattr("api.sessions.load_llm_config", lambda: settings)
     monkeypatch.setattr(AgentEngine, "_init_llm", lambda self: ScenarioProvider())
@@ -42,17 +42,18 @@ async def test_owned_expert_catalogue_auth_expiry_and_close(monkeypatch, enabled
                 await client.get(
                     "/api/helpdesk/agents", headers={**headers, "x-aro-session": "missing"}
                 )
-            ).status_code == 404
+            ).status_code == 200
             response = await client.get("/api/helpdesk/agents", headers=headers)
             assert response.status_code == 200
             if enabled:
-                assert [item["name"] for item in response.json()] == ["ticket_analyst"]
+                assert [item["name"] for item in response.json()] == ["ticket_analyst", "knowledge_expert"]
                 assert "独立模拟" in response.json()[0]["description"]
                 assert "delegate_agent" in [tool.name for tool in session.engine.tools]
             else:
                 assert response.json() == []
             session.updated = time.monotonic() - app.state.settings.session_ttl_seconds - 1
-            assert (await client.get("/api/helpdesk/agents", headers=headers)).status_code == 404
+            await app.state.sessions.expire()
+            assert (await client.get("/api/helpdesk/agents", headers=headers)).status_code == 200
             assert session.id not in app.state.sessions.sessions
 
 
@@ -85,7 +86,7 @@ async def test_example_expert_is_read_only_and_closes_child(monkeypatch):
     clients[1].close.assert_awaited_once()
 
 
-async def test_catalogue_does_not_leak_between_sessions(monkeypatch):
+async def test_catalogue_is_a_deployment_snapshot_not_session_mutation(monkeypatch):
     settings = LLMConfig(OPENAI_API_KEY="unused", OPENAI_API_BASE="http://unused.test")
     monkeypatch.setattr("api.sessions.load_llm_config", lambda: settings)
     monkeypatch.setattr(AgentEngine, "_init_llm", lambda self: ScenarioProvider())
@@ -114,7 +115,7 @@ async def test_catalogue_does_not_leak_between_sessions(monkeypatch):
                         await client.get("/api/helpdesk/agents", headers={"x-aro-session": one.id})
                     ).json()
                 )
-                == 1
+                == 0
             )
             assert (
                 await client.get("/api/helpdesk/agents", headers={"x-aro-session": two.id})

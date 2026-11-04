@@ -23,6 +23,12 @@ class ExpertConfig(BaseModel):
 
 def get_agent(config: dict[str, Any]) -> AgentHandle:
     """Create a fresh child engine per delegation and always close its resources."""
+    if config.get("name") == "knowledge_expert":
+        config = {
+            "description": "知识库专家：只读检索支持文档、工单与历史；业务为独立模拟快照，文档为示例设定。",
+            "config_path": "projects/helpdesk/config/agent_knowledge_expert.yml",
+            **config,
+        }
     settings = ExpertConfig.model_validate(config)
 
     @asynccontextmanager

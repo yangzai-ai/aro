@@ -22,11 +22,11 @@ async function checked(response: Response): Promise<Response> {
 /** POST streaming with UTF-8 boundaries, CRLF and multiline data frames handled. */
 export async function streamChat(
   message: string, sessionId: string | null, token: string,
-  onEvent: (event: AgentEvent) => void, signal: AbortSignal,
+  onEvent: (event: AgentEvent) => void, signal: AbortSignal, targetAgent: string | null = null,
 ): Promise<void> {
   const response = await checked(await fetch('/api/chat', {
     method: 'POST', headers: headers(token),
-    body: JSON.stringify({ message, session_id: sessionId }), signal,
+    body: JSON.stringify({ message, session_id: sessionId, target_agent: targetAgent }), signal,
   }));
   if (!response.body) throw new Error('浏览器不支持流式响应');
   const reader = response.body.getReader();

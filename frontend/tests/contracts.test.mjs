@@ -91,3 +91,31 @@ test('voice control is absent without Web Speech support and disabled while busy
   assert.match(voiceMarkup(true),/disabled/);
   delete globalThis.window;
 });
+
+test('expert target is explicit on chat and absent session is valid for catalogue', async () => {
+  const original = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({url, ...init});
+    return new Response(url === '/api/chat' ? 'event: done\ndata: {"session_id":"expert","trace":null}\n\n' : '[]');
+  };
+  try {
+    await streamChat('query', 'opaque-expert', 'token', () => {}, new AbortController().signal, 'ticket_analyst');
+    await streamChat('query', null, 'token', () => {}, new AbortController().signal);
+    await projectRequest('agents', '', 'token');
+    assert.deepEqual(JSON.parse(requests[0].body), {message:'query',session_id:'opaque-expert',target_agent:'ticket_analyst'});
+    assert.equal(JSON.parse(requests[1].body).target_agent, null);
+    assert.equal(requests[2].url, '/api/helpdesk/agents');
+    assert.equal(requests[2].headers.Authorization, 'Bearer token');
+  } finally { globalThis.fetch = original; }
+});
+
+test('expert conversation identity round trips without mixing legacy main records', () => {
+  const values = new Map();
+  globalThis.localStorage = {getItem:key => values.get(key) || null,setItem:(key,value) => values.set(key,value)};
+  const record = {id:'expert-local',sessionId:'expert-session',targetAgent:'knowledge_expert',title:'支持文档',updated:1,preset:'it',messages:[],closed:false};
+  assert.equal(persistHistory([record]),true);
+  assert.deepEqual(readHistory().records,[record]);
+  values.set('aro.history',JSON.stringify([record,{...record,targetAgent:{forged:true}}]));
+  assert.deepEqual(readHistory().records,[record]);
+});

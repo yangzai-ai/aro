@@ -155,3 +155,6 @@ details { font-size: var(--text-sm); margin: var(--s2) 0; } summary { color: var
  .conversation-footer span { display: none; }.conversation-footer { padding: var(--s2) 0; }.workspace-meta > span { display: none; }.workspace-meta { justify-content: flex-end; }
 }
 @media (max-width: 450px) { .topbar { min-height: calc(var(--topbar) + var(--s5)); }.navigation,.evidence-column { top: calc(var(--topbar) + var(--s5)); }.brand h1 { font-size: var(--text-lg); }.header-actions { justify-content: flex-end; }.brand { gap: var(--s1); }.composer-footer small { max-width: 65%; }.conversation-column { padding: 0 var(--s3); } }
+
+.expert-selector { display: flex; flex-wrap: wrap; gap: var(--s2); margin-bottom: var(--s3); }
+.expert-selector .selected { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }

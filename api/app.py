@@ -25,11 +25,12 @@ logger = logging.getLogger(__name__)
 
 
 class ChatInput(BaseModel):
-    """Only user text and an opaque server-issued session identifier."""
+    """User text, an opaque session identifier and optional configured expert."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     message: str = Field(min_length=1, max_length=10000)
     session_id: str | None = Field(default=None, max_length=64)
+    target_agent: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class ApprovalInput(BaseModel):
@@ -133,6 +134,7 @@ def create_app(
                 await asyncio.sleep(min(60, configured.session_ttl_seconds))
                 await store.expire()
 
+        store.load_experts()
         task = asyncio.create_task(cleanup())
         try:
             yield
@@ -154,7 +156,7 @@ def create_app(
     @application.post("/api/chat", dependencies=[Depends(require_auth)], include_in_schema=False)
     async def chat(body: ChatInput, request: Request) -> StreamingResponse:
         await store.expire()
-        session = await store.reserve(body.session_id)
+        session = await store.reserve(body.session_id, target_agent=body.target_agent)
         return StreamingResponse(
             stream_turn(request, session, body.message),
             media_type="text/event-stream",
