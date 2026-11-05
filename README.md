@@ -1,10 +1,30 @@
-# ARO · Agent Runtime & Orchestration
+<div align="center">
 
-> 企业级 Agent 运行与编排框架 —— **内核极简，能力皆插件，业务在项目层组合。**
+# ARO · 阿洛
 
-ARO 把「模型对话 → 工具调用 → 人工审批 → 执行记录」串成一条可运行、可追溯的业务链路。你通过配置组合能力（知识库、记忆、多 Agent、MCP……），在项目层对接自己的业务系统，无需改动框架内核。
+**Agent Runtime & Orchestration**
 
-当前版本 **v1.2**。仓库包含框架内核、HTTP API、Web 工作台，以及一个完整的 IT Helpdesk 业务实现（`projects/helpdesk/`）作为参考。
+### 从意图，到执行。
+*From intent to execution.*
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-0f766e.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776ab.svg?logo=python&logoColor=white)](pyproject.toml)
+[![LangGraph](https://img.shields.io/badge/Engine-LangGraph-1c3c3c.svg)](https://github.com/langchain-ai/langgraph)
+[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/UI-React-61dafb.svg?logo=react&logoColor=black)](frontend/)
+
+Enterprise-grade Agent framework — minimal kernel, everything as a plugin, business composed at the project layer.<br/>
+企业级 Agent 框架 —— **内核极简，能力皆插件，业务在项目层组合。**
+
+[快速启动](#快速启动) · [整体设计](#整体设计) · [应用到你的业务](#应用到你的业务) · [路线图](ROADMAP.md) · [贡献指南](CONTRIBUTING.md)
+
+</div>
+
+---
+
+ARO（阿洛）把「模型对话 → 工具调用 → 人工审批 → 执行记录」串成一条可运行、可追溯的业务链路。你通过配置组合能力（知识库、记忆、多 Agent、MCP……），在项目层对接自己的业务系统，无需改动框架内核。
+
+仓库包含框架内核、HTTP API、Web 工作台，以及一个完整的 IT Helpdesk 业务实现（`projects/helpdesk/`）作为参考。
 
 ---
 
@@ -40,24 +60,26 @@ ARO 把「模型对话 → 工具调用 → 人工审批 → 执行记录」串�
 ARO 的架构是**三层 + 两个扩展点**。先看图，再看讲解——对着图能讲清整个设计。
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontSize": "14px", "lineColor": "#94a3b8", "primaryTextColor": "#0f172a"}}}%%
 flowchart TB
-    User["使用者"] --> UI["Web 工作台 / HTTP API"]
-    UI <-->|"SSE：流式文本 + 执行事件"| Host["宿主层 · api<br/>会话 / 认证 / 超时 / 资源清理"]
+    User(["👤 使用者"]) --> UI["🖥️ Web 工作台 / HTTP API"]
+    UI <-->|"SSE：流式文本 + 执行事件"| Host["🛡️ 宿主层 · api<br/>会话 · 认证 · 超时 · 资源清理"]
 
     subgraph L3["① 业务项目层 · projects/"]
-        Cfg["项目配置 YAML<br/>提示词 · 启用哪些能力 · 工具白名单"]
-        Biz["业务工具 + Repository<br/>对接公司系统，业务规则"]
+        direction LR
+        Cfg["📄 项目配置 YAML<br/>提示词 · 启用能力 · 工具白名单"]
+        Biz["🧩 业务工具 + Repository<br/>对接公司系统 · 业务规则"]
     end
 
-    subgraph L2["② 能力层 · capabilities/（可插拔）"]
-        Caps["知识库 · 记忆 · HITL · 多Agent · MCP · 文档生成"]
+    subgraph L2["② 能力层 · capabilities/ · 可插拔"]
+        Caps["📚 知识库 · 🧠 记忆 · ✋ HITL · 🤝 多 Agent · 🔌 MCP · 📝 文档生成"]
     end
 
-    subgraph L1["③ 内核 · core/（对能力零认知）"]
-        Engine["AgentEngine + PluginLoader<br/>按配置加载 / 异步启动 / 装配"]
-        Loop["KernelLoop · StateGraph<br/>模型调用 → 工具执行 → 结果回填"]
-        Ports["两个扩展点契约<br/>BaseTool（工具） · Middleware（中间件）"]
-        Prov["LLMProvider · Trace"]
+    subgraph L1["③ 内核 · core/ · 对能力零认知"]
+        Engine["⚙️ AgentEngine + PluginLoader<br/>按配置加载 · 异步启动 · 装配"]
+        Loop["🔁 KernelLoop · StateGraph<br/>模型调用 → 工具执行 → 结果回填"]
+        Ports["🔗 两个扩展点契约<br/>BaseTool · Middleware"]
+        Prov["🛰️ LLMProvider · Trace"]
     end
 
     Cfg -.->|"声明启用"| Engine
@@ -68,9 +90,27 @@ flowchart TB
     Engine --> Loop
     Loop <-->|"统一调用"| Ports
     Loop <--> Prov
-    Prov <-->|"OpenAI 兼容"| Model["模型服务"]
-    Biz <--> Up["公司业务系统 / 数据源"]
-    Caps <--> Res["向量库 · 记忆存储 · MCP Server"]
+    Prov <-->|"OpenAI 兼容"| Model[("🤖 模型服务")]
+    Biz <--> Up[("🏢 公司业务系统")]
+    Caps <--> Res[("🗄️ 向量库 · 记忆 · MCP Server")]
+
+    classDef entry fill:#0f766e,stroke:#0f766e,color:#ffffff
+    classDef host fill:#e2e8f0,stroke:#475569,color:#0f172a
+    classDef biz fill:#fff7ed,stroke:#ea580c,color:#7c2d12
+    classDef cap fill:#eff6ff,stroke:#2563eb,color:#1e3a8a
+    classDef core fill:#f0fdfa,stroke:#0d9488,color:#134e4a
+    classDef ext fill:#f8fafc,stroke:#94a3b8,color:#334155,stroke-dasharray:4 3
+
+    class User,UI entry
+    class Host host
+    class Cfg,Biz biz
+    class Caps cap
+    class Engine,Loop,Ports,Prov core
+    class Model,Up,Res ext
+
+    style L3 fill:#fffbf5,stroke:#fdba74,color:#9a3412
+    style L2 fill:#f8fbff,stroke:#93c5fd,color:#1d4ed8
+    style L1 fill:#f5fdfb,stroke:#5eead4,color:#0f766e
 ```
 
 ### 对着图讲设计
@@ -104,8 +144,6 @@ flowchart TB
 **环境要求**：Windows PowerShell、Python 3.11+、uv、Node.js 22 LTS、一个 OpenAI 兼容且支持工具调用的模型 API。以下命令从仓库根目录执行。
 
 ```powershell
-Set-Location E:/workspace/aro
-
 # 1. 后端依赖（documents 用于本次启动的 Word 报告）
 if (!(Test-Path .venv/Scripts/python.exe)) { uv venv --python 3.11 .venv }
 uv pip install --python .venv/Scripts/python.exe -e ".[documents]"
@@ -185,7 +223,7 @@ aro/
 
 - 检索 `.[knowledge]`（本地 BGE 模型 + Qdrant）、MCP `.[mcp]`、Word `.[documents]`。装依赖不等于启用，仍需在项目 YAML 声明。
 - 会话状态在进程内维护，当前单 worker；多 worker 不自动共享会话。
-- API 共享令牌不替代业务用户授权；v1.2 不含完整多租户权限。
+- API 共享令牌不替代业务用户授权；当前不含完整多租户权限。
 - 长期记忆依赖服务端可信身份，不同用户不要共用同一身份。
 - 写操作保留人工审批与上游校验。
 
