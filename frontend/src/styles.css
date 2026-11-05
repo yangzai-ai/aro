@@ -19,7 +19,7 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; font: var(--text-sm)/var(-
 .topbar { min-height: var(--topbar); flex-shrink: 0; padding: var(--s3) var(--s5); display: flex; align-items: center; justify-content: space-between; gap: var(--s4); background: var(--surface); border-bottom: var(--hairline) solid var(--line); }
 .brand,.header-actions { display: flex; align-items: center; gap: var(--s3); }
 .brand h1 { font-size: var(--text-xl); margin: 0; letter-spacing: var(--tracking); }
-.brand h1 span { font-size: var(--text-sm); font-weight: var(--medium); letter-spacing: normal; margin-left: var(--s4); }
+.brand h1 span { font-size: inherit; font-weight: var(--medium); letter-spacing: normal; margin-left: var(--s4); }
 .brand small { color: var(--muted); font-size: var(--text-xs); }
 .brand-icon,.assistant-mark,.expert-avatar { display: grid; place-items: center; background: var(--accent); color: var(--on-accent); width: var(--avatar); height: var(--avatar); border-radius: var(--radius); font-weight: var(--bold); font-size: var(--text-xl); flex-shrink: 0; }
 .brand-icon.small { width: var(--control); height: var(--control); font-size: var(--text-md); }
