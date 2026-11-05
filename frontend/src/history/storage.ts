@@ -13,7 +13,11 @@ export function readHistory(): { records: Conversation[]; available: boolean } {
     const records = data.filter((item): item is Conversation => item && typeof item.id === 'string' &&
       (item.sessionId === null || typeof item.sessionId === 'string') && typeof item.title === 'string' &&
       (item.targetAgent === undefined || item.targetAgent === null || typeof item.targetAgent === 'string') && typeof item.updated === 'number' && ['it', 'service', 'general'].includes(item.preset) && typeof item.closed === 'boolean' &&
-      Array.isArray(item.messages) && item.messages.every((m: Partial<ChatMessage>) => typeof m.id === 'string' && typeof m.text === 'string' && ['user', 'assistant'].includes(m.role || '')));
+      Array.isArray(item.messages) && item.messages.every((m: Partial<ChatMessage>) => m && typeof m.id === 'string' && typeof m.text === 'string' && ['user', 'assistant'].includes(m.role || '') &&
+        (m.reasoning_blocks === undefined || (Array.isArray(m.reasoning_blocks) && m.reasoning_blocks.every(block =>
+          block && typeof block.id === 'string' && typeof block.text === 'string' &&
+          (block.agent === undefined || typeof block.agent === 'string') &&
+          typeof block.duration_ms === 'number' && Number.isFinite(block.duration_ms) && block.duration_ms >= 0 && typeof block.complete === 'boolean')))));
     return { records, available: true };
   } catch { return { records: [], available: false }; }
 }

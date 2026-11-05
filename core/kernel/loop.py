@@ -176,11 +176,16 @@ class KernelLoop:
             response = await collect_stream(self.llm, state["messages"], llm_tools)
         else:
             response = await self.llm.chat(messages=state["messages"], tools=llm_tools)
+            if response.reasoning_content:
+                await emit_event("reasoning", delta=response.reasoning_content)
 
         # 3. 添加 AI 响应到状态
         ai_message = AIMessage(content=response.content)
         if response.tool_calls:
             ai_message.tool_calls = response.tool_calls  # type: ignore
+        # 保存 reasoning_content 到 additional_kwargs（不进 content）
+        if response.reasoning_content:
+            ai_message.additional_kwargs["reasoning_content"] = response.reasoning_content
         state["messages"].append(ai_message)
 
         return _GraphState(business=state, calls=response.tool_calls or [], rounds=values["rounds"])

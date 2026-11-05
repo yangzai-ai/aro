@@ -76,7 +76,11 @@ class LocalAgentHandle:
         async def forward(event: ExecutionEvent) -> None:
             # Specialist prose is not the final supervisor answer. Preserve it as
             # a separate event instead of concatenating two answers in chat.
-            kind = "agent_token" if event.type == "token" else event.type
+            kind = event.type
+            if event.type == "token":
+                kind = "agent_token"
+            elif event.type == "reasoning":
+                kind = "agent_reasoning"
             data = dict(event.data)
             data.update(agent_name=self.name, parent_call_id=context.parent_call_id)
             if "call_id" in data:

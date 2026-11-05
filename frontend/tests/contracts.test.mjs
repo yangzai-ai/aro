@@ -119,3 +119,14 @@ test('expert conversation identity round trips without mixing legacy main record
   values.set('aro.history',JSON.stringify([record,{...record,targetAgent:{forged:true}}]));
   assert.deepEqual(readHistory().records,[record]);
 });
+
+test('reasoning history validates source blocks, preserves text and rejects malformed data',()=>{
+  const values=new Map();
+  globalThis.localStorage={getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value)};
+  const record={id:'r',sessionId:'s',title:'思考',updated:1,preset:'it',closed:false,messages:[{id:'a',role:'assistant',text:'answer',reasoning_blocks:[{id:'main',text:'thinking',duration_ms:123,complete:true},{id:'child',agent:'analyst',text:'child thinking',duration_ms:456,complete:true}]}]};
+  persistHistory([record]); assert.deepEqual(readHistory().records,[record]);
+  for(const block of [{text:{}},{id:'main',text:'ok',duration_ms:-1,complete:true},{id:'main',text:'ok',duration_ms:1,complete:true,agent:{}}]) {
+    values.set('aro.history',JSON.stringify([{...record,messages:[{...record.messages[0],reasoning_blocks:[block]}]}]));
+    assert.deepEqual(readHistory().records,[]);
+  }
+});

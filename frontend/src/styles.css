@@ -74,6 +74,9 @@ button.icon-button:hover { background: var(--surface-soft); }
 .message.user { text-align: right; }
 .message.user .message-label { color: var(--muted); }
 .message-text { line-height: var(--leading); overflow-wrap: anywhere; text-align: left; }
+.reasoning-block { background: var(--surface-soft); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s3); margin-bottom: var(--s3); font-size: var(--text-sm); }
+.reasoning-block summary { cursor: pointer; color: var(--muted); font-weight: var(--medium); user-select: none; }
+.reasoning-block pre { margin: var(--s3) 0 0; padding: var(--s3); background: var(--surface); border-radius: var(--radius-sm); overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; color: var(--ink); line-height: var(--leading); }
 .message.user .message-text { display: inline-block; max-width: 90%; background: var(--accent-soft); border-radius: var(--radius); padding: var(--s3) var(--s4); }
 .message-text h1,.message-text h2,.message-text h3 { font-size: var(--text-lg); margin: var(--s4) 0 var(--s2); }
 .message-text table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: var(--text-sm); }

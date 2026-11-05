@@ -59,11 +59,9 @@ class OpenAICompatibleProvider(LLMProvider):
     ) -> LLMResponse:
         """调用 LLM."""
         try:
-            # 转换消息格式
-            openai_messages = self._convert_messages(messages)
-
-            # 转换工具格式
+            # Gate protocol metadata on the tools actually sent, after conversion.
             openai_tools = self._convert_tools(tools) if tools else None
+            openai_messages = self._convert_messages(messages, tools_present=bool(openai_tools))
 
             # 构造请求
             request_params: dict[str, Any] = {
@@ -99,8 +97,20 @@ class OpenAICompatibleProvider(LLMProvider):
             else:
                 raise LLMError(f"LLM call failed: {e}") from e
 
-    def _convert_messages(self, messages: list[BaseMessage]) -> list[dict[str, Any]]:
-        """转换 LangChain 消息为 OpenAI 格式."""
+    def _convert_messages(
+        self, messages: list[BaseMessage], tools_present: bool = False
+    ) -> list[dict[str, Any]]:
+        """转换 LangChain 消息为 OpenAI 格式.
+
+        Args:
+            messages: LangChain 消息列表
+            tools_present: 本次请求是否携带 tools 参数
+        """
+        # 识别 DeepSeek：模型名包含 deepseek
+        is_deepseek = "deepseek" in self.model.lower()
+        # DeepSeek 思考模式 + tools 要求回传 reasoning_content
+        should_pass_reasoning = is_deepseek and self.enable_thinking and tools_present
+
         openai_messages = []
         for msg in messages:
             if not hasattr(msg, "type"):
@@ -131,6 +141,17 @@ class OpenAICompatibleProvider(LLMProvider):
                             )
                     if converted_tool_calls:
                         ai_msg["tool_calls"] = converted_tool_calls
+
+                # DeepSeek 思考模式 + tools：按协议回传 reasoning_content
+                if should_pass_reasoning:
+                    reasoning = (
+                        msg.additional_kwargs.get("reasoning_content")
+                        if hasattr(msg, "additional_kwargs")
+                        else None
+                    )
+                    if reasoning:
+                        ai_msg["reasoning_content"] = reasoning
+
                 openai_messages.append(ai_msg)
             elif msg.type == "tool":
                 tool_content = msg.content if msg.content else " "  # ← 修复：确保工具消息也不为空
@@ -229,11 +250,9 @@ class OpenAICompatibleProvider(LLMProvider):
                 - finish_reason: str | None - 结束原因
         """
         try:
-            # 转换消息格式
-            openai_messages = self._convert_messages(messages)
-
-            # 转换工具格式
+            # Gate protocol metadata on the tools actually sent, after conversion.
             openai_tools = self._convert_tools(tools) if tools else None
+            openai_messages = self._convert_messages(messages, tools_present=bool(openai_tools))
 
             # 构造请求
             request_params: dict[str, Any] = {

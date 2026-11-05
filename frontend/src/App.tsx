@@ -110,13 +110,49 @@ export default function App() {
     const epoch = generation.current;
     const current = new AbortController(); controller.current = current;
     const assistantId = crypto.randomUUID();
+    // Timing measures observed reasoning events, excluding request/network startup.
+    const reasoningTimes = new Map<string, { start: number; end?: number }>();
+    const reasoningId = (agent?: string, call?: string) => agent ? `agent:${agent}:${call || ''}` : 'main';
+    const finishReasoning = (id?: string) => {
+      const now = performance.now();
+      for (const [key, timing] of reasoningTimes) if ((!id || id === key) && timing.end === undefined) timing.end = now;
+      setMessages(old => old.map(message => message.id === assistantId ? { ...message,
+        reasoning_blocks: message.reasoning_blocks?.map(block => {
+          const timing = reasoningTimes.get(block.id);
+          return timing?.end !== undefined ? { ...block, complete: true, duration_ms: timing.end - timing.start } : block;
+        }) } : message));
+    };
     setBusy(true); setError(''); setSteps([]); setTrace(null); setApproval(null);
     setMessages(old => [...old, { id: crypto.randomUUID(), role: 'user', text }, { id: assistantId, role: 'assistant', text: '' }]);
     const receive = (event: AgentEvent) => {
       if (epoch !== generation.current) return;
       switch (event.type) {
         case 'session': sessionId.current = event.data.session_id; sessionValue('aro.session', event.data.session_id); setAvailability('live'); setMessages(old => [...old]); void refresh(); void refreshExperts(); break;
-        case 'token': setMessages(old => old.map(message => message.id === assistantId ? { ...message, text: message.text + event.data.delta } : message)); break;
+        case 'token':
+          if (!event.data.delta) break;
+          finishReasoning('main');
+          setMessages(old => old.map(message => message.id === assistantId ? { ...message, text: message.text + event.data.delta } : message)); break;
+        case 'reasoning':
+        case 'agent_reasoning': {
+          if (!event.data.delta) break;
+          const agent = event.type === 'agent_reasoning' ? event.data.agent_name : undefined;
+          const id = reasoningId(agent, event.type === 'agent_reasoning' ? event.data.parent_call_id : undefined);
+          const now = performance.now();
+          let timing = reasoningTimes.get(id);
+          if (!timing) { timing = { start: now }; reasoningTimes.set(id, timing); }
+          timing.end = undefined;
+          const duration = now - timing.start;
+          setMessages(old => old.map(message => {
+            if (message.id !== assistantId) return message;
+            const blocks = message.reasoning_blocks || [];
+            const existing = blocks.find(block => block.id === id);
+            const next = { id, agent, text: (existing?.text || '') + event.data.delta, duration_ms: duration, complete: false };
+            return { ...message, reasoning_blocks: existing ? blocks.map(block => block.id === id ? next : block) : [...blocks, next] };
+          })); break;
+        }
+        case 'agent_token':
+          if (event.data.delta) finishReasoning(reasoningId(event.data.agent_name, event.data.parent_call_id));
+          break; // Child prose stays in its tool result/Trace, never in the supervisor answer.
         case 'tool_call': setSteps(old => [...old, event.data]); break;
         case 'tool_result': setSteps(old => old.map(step => step.call_id === event.data.call_id ? event.data : step)); setApproval(null); void refresh(); break;
         case 'approval_required': setApproval(event.data); break;
@@ -126,7 +162,7 @@ export default function App() {
     };
     try { await streamChat(text, sessionId.current, token, receive, current.signal, selectedExpert); }
     catch (cause) { if (epoch === generation.current) { if (cause instanceof HTTPError && cause.status === 404) setAvailability('expired'); setError(current.signal.aborted ? '本轮已停止。已执行的业务操作不会自动撤销。' : cause instanceof Error ? cause.message : '连接失败'); } }
-    finally { if (controller.current === current) controller.current = null; if (epoch === generation.current) { setBusy(false); setApproval(null); setDeciding(false); void refresh(); } }
+    finally { if (controller.current === current) controller.current = null; if (epoch === generation.current) { finishReasoning(); setBusy(false); setApproval(null); setDeciding(false); void refresh(); } }
   };
 
   const decide = async (approved: boolean) => {

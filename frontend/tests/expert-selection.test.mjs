@@ -17,7 +17,7 @@ const experts = [
   {name:'knowledge_expert',description:'只读知识检索'},
 ];
 
-async function mounted(run) {
+async function mounted(run, chatHandler) {
   const originals = Object.fromEntries(['window','document','localStorage','sessionStorage','fetch'].map(key => [key,globalThis[key]]));
   const values = new Map(), sessions = new Map(), requests = [];
   globalThis.localStorage = {getItem:key=>values.get(key) || null,setItem:(key,value)=>values.set(key,value)};
@@ -28,6 +28,7 @@ async function mounted(run) {
     if (url === '/api/helpdesk/agents') return Response.json(experts);
     if (url === '/api/chat') {
       const body = JSON.parse(init.body); requests.push(body);
+      if (chatHandler) return chatHandler(body);
       const identity = body.session_id || `session-${body.target_agent || 'main'}`;
       return new Response(`event: session\ndata: ${JSON.stringify({session_id:identity})}\n\nevent: token\ndata: {"delta":"已回复"}\n\nevent: done\ndata: ${JSON.stringify({session_id:identity,trace:null})}\n\n`);
     }
@@ -37,7 +38,7 @@ async function mounted(run) {
   let renderer;
   try {
     await act(async()=>{renderer=TestRenderer.create(React.createElement(App));});
-    await run(renderer.root,requests);
+    await run(renderer.root,requests,values);
   } finally {
     if(renderer) await act(async()=>renderer.unmount());
     for(const [key,value] of Object.entries(originals)) {
@@ -92,4 +93,56 @@ test('composer chips keep independent expert sessions and restore the main targe
       ['knowledge_expert',null],[null,null],['ticket_analyst','session-ticket_analyst'],
     ]);
   });
+});
+
+function reasoningBlocks(root) { return root.findAll(node=>node.type==='details' && node.props.className==='reasoning-block'); }
+
+test('reasoning streams open, collapses on prose, manually expands, persists and isolates delegation', async()=>{
+  let channel;
+  const response=()=>new Response(new ReadableStream({start(c){channel=c;}}));
+  const emit=async(type,data)=>{await act(async()=>{channel.enqueue(new TextEncoder().encode(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`));});};
+  await mounted(async(root,requests,values)=>{
+    await send(root,'请思考并委派');
+    await emit('session',{session_id:'reasoning-session'});
+    assert.equal(reasoningBlocks(root).length,0);
+    await emit('reasoning',{delta:'总控思考'});
+    assert.equal(reasoningBlocks(root)[0].props.open,true);
+    await emit('reasoning',{delta:'追加'});
+    assert.match(text(reasoningBlocks(root)[0]),/总控思考追加/);
+    await emit('agent_reasoning',{delta:'专家思考',agent_name:'ticket_analyst',parent_call_id:'c1'});
+    assert.equal(reasoningBlocks(root).length,2);
+    assert.match(text(reasoningBlocks(root)[1]),/思考过程 \(ticket_analyst\)/);
+    await emit('agent_token',{delta:'专家正文',agent_name:'ticket_analyst',parent_call_id:'c1'});
+    assert.equal(reasoningBlocks(root)[1].props.open,false);
+    assert.equal(reasoningBlocks(root)[0].props.open,true);
+    await emit('token',{delta:'最终答案'});
+    assert.equal(reasoningBlocks(root)[0].props.open,false);
+    await act(async()=>reasoningBlocks(root)[0].props.onToggle({currentTarget:{open:true}}));
+    assert.equal(reasoningBlocks(root)[0].props.open,true);
+    await emit('token',{delta:'继续正文'});
+    assert.equal(reasoningBlocks(root)[0].props.open,true,'manual expansion survives subsequent tokens');
+    await emit('done',{session_id:'reasoning-session',trace:null});
+    await act(async()=>channel.close());
+    const saved=JSON.parse(values.get('aro.history'))[0].messages.find(m=>m.role==='assistant');
+    assert.equal(saved.text,'最终答案继续正文');
+    assert.equal(saved.reasoning_blocks[0].text,'总控思考追加');
+    assert.equal(saved.reasoning_blocks[1].agent,'ticket_analyst');
+    assert.ok(saved.reasoning_blocks.every(b=>b.complete && b.duration_ms>=0));
+    assert.match(text(reasoningBlocks(root)[0]),/秒/);
+    await send(root,'无思考的第二轮');
+    await emit('token',{delta:'普通回答'});
+    await emit('done',{session_id:'reasoning-session',trace:null});
+    await act(async()=>channel.close());
+    assert.equal(reasoningBlocks(root).length,2,'no new block for plain response');
+    const latest=JSON.parse(values.get('aro.history'))[0].messages.at(-1);
+    assert.equal(latest.text,'普通回答');
+    assert.equal(latest.reasoning_blocks,undefined);
+  },response);
+});
+
+test('no reasoning or empty reasoning never renders a placeholder block', async()=>{
+  await mounted(async(root)=>{
+    await send(root,'普通问题');
+    assert.equal(reasoningBlocks(root).length,0);
+  },()=>new Response('event: reasoning\ndata: {"delta":""}\n\nevent: token\ndata: {"delta":"普通回答"}\n\nevent: done\ndata: {"session_id":"s","trace":null}\n\n'));
 });

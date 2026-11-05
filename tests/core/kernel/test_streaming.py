@@ -59,11 +59,14 @@ async def test_interleaved_tools_and_unicode_arguments():
     with event_scope(sink):
         response = await collect_stream(provider, [], None)
     assert response.content == "请稍候"
+    assert response.reasoning_content == "not public"
     assert response.tool_calls == [
         {"id": "a", "name": "first", "args": {"x": 1}},
         {"id": "b", "name": "second", "args": {"text": "中文"}},
     ]
-    assert len(events) == 1 and events[0].data == {"delta": "请稍候"}
+    assert len(events) == 2
+    assert events[0].type == "reasoning" and events[0].data == {"delta": "not public"}
+    assert events[1].type == "token" and events[1].data == {"delta": "请稍候"}
     assert provider.closed
 
 

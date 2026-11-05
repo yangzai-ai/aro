@@ -25,11 +25,17 @@ async def collect_stream(
 ) -> LLMResponse:
     """Forward real tokens and safely assemble all interleaved tool calls."""
     text: list[str] = []
+    reasoning: list[str] = []
     calls: dict[int, PartialToolCall] = {}
     finish: str | None = None
     stream = provider.chat_stream(messages=messages, tools=tools)
     try:
         async for chunk in stream:
+            # When a provider packs both fields into one chunk, thinking precedes prose.
+            reasoning_delta = chunk.get("reasoning_delta", "")
+            if reasoning_delta:
+                reasoning.append(reasoning_delta)
+                await emit_event("reasoning", delta=reasoning_delta)
             delta = chunk.get("delta", "")
             if delta:
                 text.append(delta)
@@ -65,4 +71,8 @@ async def collect_stream(
         if not isinstance(args, dict):
             raise ValueError("Tool arguments must be a JSON object")
         complete.append({"id": call.id or str(uuid.uuid4()), "name": call.name, "args": args})
-    return LLMResponse(content="".join(text), tool_calls=complete or None)
+    return LLMResponse(
+        content="".join(text),
+        reasoning_content="".join(reasoning) if reasoning else None,
+        tool_calls=complete or None,
+    )

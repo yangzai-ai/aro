@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { ChatMessage } from '../client/types';
+import type { ChatMessage, ReasoningBlock } from '../client/types';
 import type { Expert } from './Sidebar';
 import { VoiceButton } from './VoiceButton';
 import { presets, type Preset } from '../theme/theme';
@@ -19,6 +19,15 @@ interface Props {
   experts: Expert[];
   selectedExpert: string | null;
   onSelectExpert: (name: string | null) => void;
+}
+
+function ReasoningDetails({ block, active }: { block: ReasoningBlock; active: boolean }) {
+  const [open, setOpen] = useState(active);
+  useEffect(() => { setOpen(active); }, [active]);
+  return <details className="reasoning-block" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
+    <summary title="浏览器从首个思考片段到正文或结束的观察用时，可能包含工具等待，并非模型纯计算时长">思考过程{block.agent ? ` (${block.agent})` : ''} · {active ? '正在思考' : '已思考'} {(block.duration_ms / 1000).toFixed(1)} 秒</summary>
+    <pre>{block.text}</pre>
+  </details>;
 }
 
 export function ChatWindow({ messages, busy, onSend, onStop, readOnly, status, preset, suggestion, onExperts, experts, selectedExpert, onSelectExpert }: Props) {
@@ -41,6 +50,7 @@ export function ChatWindow({ messages, busy, onSend, onStop, readOnly, status, p
       </div>}
       {messages.map(message => <article className={`message ${message.role}`} key={message.id}>
         <div className="message-label">{message.role === 'user' ? '你' : selectedExpert || '总控助手'}</div>
+        {message.role === 'assistant' && message.reasoning_blocks?.filter(block => block.text).map(block => <ReasoningDetails key={block.id} block={block} active={busy && message.id === messages[messages.length - 1]?.id && !block.complete} />)}
         <div className="message-text">{message.text ? <Markdown skipHtml remarkPlugins={[remarkGfm]} components={{a: ({children}) => <span>{children}</span>, img: ({alt}) => <span>{alt}</span>}}>{message.text}</Markdown> : (busy ? '正在思考或等待工具结果…' : '本轮没有文本回复。')}</div>
       </article>)}
       <div ref={bottom} />
