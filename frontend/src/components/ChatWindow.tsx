@@ -42,11 +42,11 @@ export function ChatWindow({ messages, busy, onSend, onStop, readOnly, status, p
     setDraft('');
   };
   return <section className="chat-panel panel" aria-label="对话窗口">
-    <div className="panel-heading"><div><span className="eyebrow">工作空间 / {presets[preset]}</span><h2>与 ARO 一起，把问题解决</h2></div><span role="status">{busy ? '执行中' : status}</span></div>
+    <div className="panel-heading"><div><span className="eyebrow">工作空间 / {presets[preset]}</span><h2>与 ARO·阿洛 一起，把问题解决</h2></div><span role="status">{busy ? '执行中' : status}</span></div>
     <div className="messages" aria-live="polite" aria-relevant="additions text">
       {!messages.length && <div className="empty-state">
         <div className="assistant-mark">A<span className="spark">✦</span></div><span className="eyebrow">思考 · 协作 · 执行</span><h3>你好，今天想解决什么？</h3>
-        <p>用自然语言提出问题，工具执行留下证据。<br />涉及写入的操作，始终由你确认。</p>
+        <p>内核极简，能力皆插件。工具执行留下证据，操作由你确认。</p>
       </div>}
       {messages.map(message => <article className={`message ${message.role}`} key={message.id}>
         <div className="message-label">{message.role === 'user' ? '你' : selectedExpert || '总控助手'}</div>
