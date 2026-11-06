@@ -42,6 +42,22 @@ before_tool 首个 `(False, reason)` 中止后续 before_tool，拒绝执行工�
 
 HITL 保持方案 A：before_tool 中等待 ApprovalManager 的 Future，审批 API 回调完成 Future，取消时沿原清理链回收。图不使用 interrupt、ToolNode 或工具自动重试。
 
+### v1.4 工具边界与耗时
+
+进入工具节点时先对整批调用深拷贝，阻止第一个钩子改写后续调用。`before_tool` 每次接收独立参数副本，工具执行也接收副本。事件 sink 接收参数/结果副本。`after_tool` 每次接收独立参数、结果和消息视图；内核保留真实 ToolMessage 和历史消息对象，忽略观察者的消息改写，仍允许 context 与外部存储写入。
+
+`after_tool` 普通异常不会中断后续钩子、tool_result 或同批调用，诊断记录在调用的 `middleware_errors`（middleware/hook/error_type）；不记录原始异常文本。Trace 的既有四个钩子实现保留，由内核在完整观察链结束后补全权威结果、耗时与诊断，Trace 钩子自身失败也有记录兜底。`CancelledError` 继续传播；轮级 before/after 和事件 sink 的异常策略不变。
+
+`BaseTool.timeout_seconds: float | None = None` 由内核的 `asyncio.timeout` 包住 `tool.run()`，不包含授权等待或观察钩子，无自动重试。超时生成失败 ToolResult 后继续处理同批调用。阻塞事件循环或主动吞取消的工具不受可靠硬截止保证，外部写入也不会自动回滚。
+
+Trace 工具记录和 SSE tool_result 统一包含：
+
+- `duration_ms`：本次调用总耗时，包含授权和观察链。
+- `approval_duration_ms`：仅当 write 调用实际到达通用 `_handles_write` 授权中间件时记录整个 before_tool 阶段，包含同阶段其他钩子的开销；通过、拒绝、授权异常均记录。没有走审批则为 `None`，不是 0。
+- `execution_duration_ms`：仅工具 run 的执行耗时（包含超时取消收尾）；拒绝、未知工具、无授权处理器而被拦截的 write 为 0。
+
+前端执行记录保留总耗时，并分别展示授权与执行耗时。未完成的 tool_call 没有完成耗时字段，兼容旧历史记录。
+
 ## 状态与执行上下文
 
 图私有状态仅含完整业务状态 business、本轮模型调用 calls、已完成轮数 rounds。business 为 LastValue 通道，不将 AgentState.messages 的 add_messages reducer 应用到整段历史，避免重复合并或复活已删除消息。能力继续接收原 AgentState，无图配置或图控制字段；消息对象引用保留，支持 multiagent 依赖 HumanMessage 对象身份的单轮预算。

@@ -48,6 +48,9 @@ class BaseTool(ABC):
     - schema: 参数 schema（Pydantic model 或 dict）
     """
 
+    # Kernel deadline covers run() only, never middleware/approval waiting.
+    timeout_seconds: float | None = None
+
     @property
     @abstractmethod
     def name(self) -> str:

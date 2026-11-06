@@ -16,6 +16,7 @@ import time
 import uuid
 from collections.abc import Coroutine
 from contextvars import copy_context
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, TypedDict
 
@@ -28,6 +29,7 @@ from core.kernel.events import emit_event
 from core.kernel.middleware import Middleware
 from core.kernel.state import AgentState, runtime_context
 from core.kernel.streaming import collect_stream
+from core.kernel.trace import TraceMiddleware
 from core.llm.provider import LLMProvider
 from core.tools.base import BaseTool, ToolResult
 
@@ -192,20 +194,37 @@ class KernelLoop:
 
     async def _tools(self, values: _GraphState, frame: KernelRun) -> _GraphState:
         state = frame.state = values["business"]
-        for tool_call in values["calls"]:
+        # Freeze the entire batch before any hook or event sink can observe it.
+        for tool_call in deepcopy(values["calls"]):
             tool_name = tool_call["name"]
             tool_args = tool_call["args"]
             tool_id = tool_call.get("id", "")
             started = time.perf_counter()
+            wall_started = time.time()
+            trace_offsets = {
+                middleware: len(middleware.current_trace.tool_calls)
+                for middleware in self.middlewares
+                if isinstance(middleware, TraceMiddleware) and middleware.current_trace is not None
+            }
             runtime_context(state, create=True)["tool_call_id"] = tool_id
-            await emit_event("tool_call", call_id=tool_id, tool_name=tool_name, args=tool_args)
+            await emit_event(
+                "tool_call", call_id=tool_id, tool_name=tool_name, args=deepcopy(tool_args)
+            )
 
             # 工具级中间件可以在执行前拦截调用。
             should_execute = True
             error_message: str | None = None
+            tool = self._tool_map.get(tool_name)
+            approval_duration_ms: float | None = None
+            execution_duration_ms = 0.0
+            authorization_started = time.perf_counter()
             try:
                 for middleware in self.middlewares:
-                    allowed, message = await middleware.before_tool(tool_name, tool_args, state)
+                    if tool and tool.permission == "write" and middleware._handles_write:
+                        approval_duration_ms = 0.0
+                    allowed, message = await middleware.before_tool(
+                        tool_name, deepcopy(tool_args), state
+                    )
                     if not allowed:
                         should_execute, error_message = False, message
                         break
@@ -213,7 +232,10 @@ class KernelLoop:
                 should_execute = False
                 error_message = f"Tool authorization failed: {exc}"
 
-            tool = self._tool_map.get(tool_name)
+            finally:
+                if approval_duration_ms is not None:
+                    approval_duration_ms = (time.perf_counter() - authorization_started) * 1000
+
             result: ToolResult
             if not should_execute:
                 result = ToolResult(success=False, error=error_message or "Tool execution blocked")
@@ -236,7 +258,14 @@ class KernelLoop:
                 )
             elif tool:
                 try:
-                    result = await tool.run(**tool_args)
+                    execution_args = deepcopy(tool_args)
+                    exec_started = time.perf_counter()
+                    try:
+                        async with asyncio.timeout(tool.timeout_seconds):
+                            result = await tool.run(**execution_args)
+                    finally:
+                        execution_duration_ms = (time.perf_counter() - exec_started) * 1000
+                    result = deepcopy(result)
                     tool_message = ToolMessage(
                         content=(
                             result.output
@@ -247,6 +276,11 @@ class KernelLoop:
                         else f"Error: {result.error}",
                         tool_call_id=tool_id,
                         name=tool_name,
+                    )
+                except TimeoutError:
+                    result = ToolResult(success=False, error="Tool execution timed out")
+                    tool_message = ToolMessage(
+                        content=f"Error: {result.error}", tool_call_id=tool_id, name=tool_name
                     )
                 except Exception as e:
                     result = ToolResult(success=False, error=str(e))
@@ -264,18 +298,55 @@ class KernelLoop:
                 )
 
             state["messages"].append(tool_message)
+            middleware_errors: list[dict[str, str]] = []
             for middleware in self.middlewares:
-                state = await middleware.after_tool(tool_name, tool_args, result, state)
-                frame.state = state
+                # Preserve canonical message identity (including delegation identity).
+                # context stays shared: persistence/observability writes are permitted.
+                messages = state["messages"]
+                try:
+                    view = state.copy()
+                    view["messages"] = deepcopy(messages)
+                    updated = await middleware.after_tool(
+                        tool_name, deepcopy(tool_args), deepcopy(result), view
+                    )
+                    state = updated.copy()
+                    state["messages"] = messages
+                    frame.state = state
+                except Exception as exc:
+                    # Never persist raw exception text: it can contain credentials.
+                    middleware_errors.append(
+                        {
+                            "middleware": type(middleware).__name__,
+                            "hook": "after_tool",
+                            "error_type": type(exc).__name__,
+                        }
+                    )
+            duration_ms = (time.perf_counter() - started) * 1000
+            for trace, offset in trace_offsets.items():
+                trace._complete_tool_call(
+                    offset,
+                    tool_name,
+                    tool_args,
+                    result,
+                    tool_id,
+                    wall_started,
+                    duration_ms,
+                    approval_duration_ms,
+                    execution_duration_ms,
+                    middleware_errors,
+                )
             await emit_event(
                 "tool_result",
                 call_id=tool_id,
                 tool_name=tool_name,
-                args=tool_args,
+                args=deepcopy(tool_args),
                 success=result.success,
-                result=result.output if result.success else None,
+                result=deepcopy(result.output) if result.success else None,
                 error=result.error,
-                duration_ms=(time.perf_counter() - started) * 1000,
+                duration_ms=duration_ms,
+                approval_duration_ms=approval_duration_ms,
+                execution_duration_ms=execution_duration_ms,
+                middleware_errors=deepcopy(middleware_errors),
             )
 
         return _GraphState(business=state, calls=[], rounds=values["rounds"])

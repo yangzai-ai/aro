@@ -14,7 +14,7 @@ from core.kernel.engine import AgentEngine
 from core.kernel.loop import KernelLoop
 from core.kernel.state import AgentState
 from core.llm.provider import LLMResponse
-from tests.test_kernel_loop import FakeLLMProvider, FakeTool, SpyMiddleware
+from tests.test_kernel_loop import FakeLLMProvider, FakeTool
 
 
 def config(tmp_path):
@@ -124,19 +124,21 @@ async def test_explicit_input_replaces_pending_calls_history_and_rounds(tmp_path
 
     tool = SideEffect()
 
-    class FailAfterWrite(SpyMiddleware):
-        async def after_tool(self, name, args, result, state):
+    async def fail_after_write(event):
+        # after_tool errors are isolated in v1.4. A transport failure still
+        # interrupts this same tools node after the external side effect.
+        if event.type == "tool_result":
             raise RuntimeError("failed after side effect")
 
     engine.loop = KernelLoop(
         FakeLLMProvider("", [{"id": "old", "name": "fake_tool", "args": {}}]),
         [tool],
-        [engine.trace_middleware, FailAfterWrite("failure")],
+        [engine.trace_middleware],
     )
     old = AgentState(messages=[], context={"thread_id": "same", "old_only": True})
     try:
         with pytest.raises(RuntimeError, match="failed after side effect"):
-            await engine.run("old request", old, max_tool_rounds=0)
+            await engine.run("old request", old, max_tool_rounds=0, on_event=fail_after_write)
         assert tool.calls == 1
         pending = await saver.aget_tuple({"configurable": {"thread_id": "same"}})
         assert pending.checkpoint["channel_values"]["calls"]  # unfinished tools→after boundary

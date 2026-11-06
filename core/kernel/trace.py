@@ -26,6 +26,9 @@ class ToolCall:
     end_time: float = 0.0
     duration_ms: float = 0.0
     call_id: str = ""
+    approval_duration_ms: float | None = None
+    execution_duration_ms: float = 0.0
+    middleware_errors: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -142,6 +145,43 @@ class TraceMiddleware(Middleware):
             )
         )
         return state
+
+    def _complete_tool_call(
+        self,
+        offset: int,
+        tool_name: str,
+        args: dict[str, Any],
+        result: ToolResult,
+        call_id: str,
+        start_time: float,
+        duration_ms: float,
+        approval_duration_ms: float | None,
+        execution_duration_ms: float,
+        middleware_errors: list[dict[str, str]],
+    ) -> None:
+        """Kernel finalization after all observers, including failing observers.
+
+        Existing hooks stay unchanged. Fall back to a canonical record if this
+        observer's hook failed; match by batch position, not possibly absent IDs.
+        """
+        if self.current_trace is None:
+            return
+        calls = self.current_trace.tool_calls
+        call = ToolCall(tool_name=tool_name, args=deepcopy(args))
+        call.result = deepcopy(result.output) if result.success else None
+        call.success = result.success
+        call.error = result.error if not result.success else None
+        call.start_time = start_time
+        call.end_time = time.time()
+        call.duration_ms = duration_ms
+        call.call_id = call_id
+        call.approval_duration_ms = approval_duration_ms
+        call.execution_duration_ms = execution_duration_ms
+        call.middleware_errors = deepcopy(middleware_errors)
+        if len(calls) > offset:
+            calls[offset] = call
+        else:
+            calls.append(call)
 
     def get_latest_trace(self) -> AgentTrace | None:
         """Return the most recently completed trace."""
