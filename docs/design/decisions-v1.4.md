@@ -9,7 +9,7 @@
 | # | 主题 | 决定 | 放弃的方案 |
 | --- | --- | --- | --- |
 | D1 | 会话模式 | 保持托管模式：ARO 持有完整运行状态 | 彻底无状态（业务后端带快照） |
-| D2 | 通用装配与会话持久化 | entry point 分组、服务协议、去除 api/ 对具体能力的直接依赖；会话存储后端可替换 | 内核选项硬编码三种实现；持久化改成 Capability 插件 |
+| D2 | 扩展模型完整化 | Hook 覆盖完整生命周期（会话恢复 → 轮级钩子 → 关闭），Capability 作标准能力打包器，Trace/持久化/HITL 无特例 | 拆成 Middleware + LifecycleHook 两套；宿主级基础设施单独一套机制 |
 | D3 | 审批跨重启 | 暂保留 Future 挂起，重启即本轮中断 | 现在改用 LangGraph interrupt |
 | D4 | 工具执行管线 | 最小加固：钩子不变，收紧语义 | 照搬五段式管线 |
 | D5 | MCP | MCP client 能力插件 + ARO MCP 网关 | 每个外部系统手写工具 |
@@ -31,50 +31,95 @@
 - 快照交给业务后端，就得解决防篡改（签名）、敏感数据（加密）、格式版本兼容等问题。
 - 审批挂起期间执行停在进程里，本来就做不到无状态。
 
-## D2 通用装配与会话持久化
+## D2 扩展模型完整化：回归两个扩展点
 
-### 两个更正（基于代码审计）
+### 重要澄清
 
-1. **现有 7 个能力在架构上已经是插件**。PluginLoader 按名字动态加载，内核对任何具体能力零认知。真正缺的是：（a）外部包没有标准发现机制（只能在配置里写模块路径）；（b）`api/sessions.py` 直接 import 并 isinstance 检查 HITLCapability 和 MultiAgentConfig，宿主层认识了具体能力。
-2. **hitl 不依赖 PostgreSQL 驱动**。v1.2 已删除死代码，之前的评估有误。
+在讨论"是否把持久化做成插件"时发现设计逐渐复杂化，引入了"宿主级基础设施"概念，并准备为会话存储和 Trace 导出单独建立扩展组（`aro.session_stores`、`aro.trace_sinks`）。这偏离了最初的**一个内核、两个扩展点（BaseTool + Middleware）**设计哲学。
 
-### 通用装配（v1.5a）
+用户提出核心问题：Trace、会话存储能不能都基于这两个扩展点实现？审查后发现可以，但需要完整化扩展点 2（Middleware → Hook）。
 
-**原则**：不为任何具体能力写特例。每个新机制至少要有两个实际实现用上它才做。
+### 决定：Hook 覆盖完整生命周期
 
-三件事：
+**架构**：
 
-1. **统一用 Python entry point 发现**：三个扩展组：
-   - `aro.capabilities`：能力插件（BaseTool + Middleware 打包）
-   - `aro.session_stores`：会话存储后端
-   - `aro.trace_sinks`：Trace 导出目的地
-   - PluginLoader 先查 entry point，回退到现有模块路径，现有配置零改动。
-   - 内置能力在 pyproject.toml 注册自己的 entry point。
+```
+内核
+├── 扩展点 1：BaseTool（模型按需调用）
+└── 扩展点 2：Hook（完整生命周期，所有能力用这一套）
 
-2. **宿主按服务协议找能力，不按具体类**：
-   - Capability 可选声明提供哪些服务（`provides: list[str]`），如 `"approval"`、`"expert_catalogue"`。
-   - `api/` 只按服务名查询，不 import 具体 Capability 类。
-   - 检验通用性的真实场景：第三方审批插件（如对接企业 OA）可以替换内置 hitl，`api/` 不用改。
+Capability = 打包器（Tool + Hook 的任意组合）
+```
 
-3. **边界测试**：AST 扫描禁止 `api/` import 任何 `capabilities.*`，做法同现有 LangGraph 边界测试。
+**Hook 生命周期阶段**（全部可选，默认空操作）：
 
-**Trace 不做成插件**：Trace 是观测基础设施，所有能力的审计依赖它，做成可选会破坏企业审计要求。正确的形态是：采集留在内核，导出目的地（Trace sink）做成可替换实现，注册在 `aro.trace_sinks` 扩展组。
+```python
+class Hook(Protocol):
+    async def on_start(self, config: dict) -> None:
+        """引擎启动时：配置校验、连接建立。"""
+    
+    async def on_session_load(self, session_id: str) -> AgentState | None:
+        """轮开始前：会话恢复。第一个返回非 None 的 state 即用，其余跳过。"""
+    
+    async def before(self, state: AgentState) -> AgentState:
+        """每轮开始（现有 Middleware.before）"""
+    
+    async def before_tool(self, tool_name, tool_args, state) -> tuple[bool, str | None]:
+        """工具执行前（现有 Middleware.before_tool）"""
+    
+    async def after_tool(self, tool_name, tool_args, tool_result, state) -> AgentState:
+        """工具执行后（现有 Middleware.after_tool）"""
+    
+    async def after(self, state: AgentState) -> AgentState:
+        """每轮结束：写盘、Trace 导出（现有 Middleware.after）"""
+    
+    async def on_session_close(self, session_id: str) -> None:
+        """会话关闭：删除存储。"""
+    
+    async def on_stop(self) -> None:
+        """引擎停止时：连接释放。"""
+```
 
-### 会话持久化（v1.5b）
+现有 Middleware 完全兼容，就是只用了中间四个阶段（before/before_tool/after_tool/after）的 Hook。
 
-建在 v1.5a 的通用装配之上。会话存储后端注册为 `aro.session_stores`，通过配置选择。
+**各能力的实现**：
 
-决定：
-1. **持久化对象是 Session**：消息列表加元数据，不持久化引擎，引擎由配置重建。
-2. **内置三种存储后端**：内存（默认，标准库），SQLite（单机，aiosqlite），PostgreSQL（生产，asyncpg）。都通过 entry point 注册，配置里写后端名即可。
-3. **按需恢复**：session_id 在内存里找不到，从存储加载，重建引擎后继续。
-4. **每个工具执行后落盘**，至少写操作连同 Trace 一起。轮末保存不够：同一批写操作 A 执行了、B 还在等审批时重启，A 已执行的事实会丢。
-5. **悬空调用补结果**：恢复时工具有调用没结果，补一条"因服务重启未执行"，消息协议保持完整。
-6. **两层 TTL**：内存 TTL（热驻留）与存储保留期（到期真删）分开配置。
-7. **序列化保真**：tool_calls、ToolMessage、`additional_kwargs.reasoning_content` 完整保留。
-8. **敏感数据**：存储里有思考和工具原始数据，连接串走环境变量，不写进配置文件。
+| 能力 | 使用的阶段 | 特殊性 |
+|---|---|---|
+| Trace | before_tool, after_tool, after（导出） | 无 |
+| HITL | before_tool（审批拦截） | 无 |
+| Memory | before（读上下文）, after（写入） | 无 |
+| 会话存储 | on_session_load（恢复）, after（写盘）, on_session_close（删除） | on_session_load 返回 AgentState\|None，内核取第一个非 None |
+| 配置校验 | on_start | 无 |
+| 多实例心跳 | on_start（注册）, on_stop（注销） | 无 |
 
-放弃"持久化做成 Capability 插件"的原因：会话存储是宿主级基础设施，在所有能力加载之前就要决定后端。如果做成 Capability，会引入"谁来持久化能力加载顺序本身"的循环。正确归属是 `aro.session_stores` 扩展组，而不是 `aro.capabilities`。
+所有能力都是标准 Capability，打包 Tool 和 Hook 的任意组合，没有任何特例。
+
+### 放弃的方案
+
+1. **拆成 Middleware + LifecycleHook 两套**：会引入概念分裂，用户不清楚什么时候该用哪个。
+2. **宿主级基础设施单独一套机制**：为会话存储、Trace 导出单独建 `aro.session_stores`、`aro.trace_sinks` 扩展组。这会让架构变成"标准能力用 Capability，基础设施用另一套"，失去一致性。
+
+### 技术细节：on_session_load 签名不同
+
+`on_session_load` 返回 `AgentState | None`，和其他钩子（接收并返回 state）签名不同。这是本质区别：它是**创建**状态，不是**修改**状态。内核调用逻辑：
+
+```python
+state = None
+for hook in hooks:
+    state = await hook.on_session_load(session_id)
+    if state is not None:
+        break  # 第一个返回非 None 的胜出
+```
+
+这个特殊性在文档里明确说明，但不影响整体架构的一致性。
+
+### 对后续迭代的影响
+
+- Trace 可以从内核移出，改成标准 Capability（v1.6+，非紧急）
+- 会话持久化直接用 Hook 实现，不需要单独的 `session_stores` 扩展组
+- 插件生态只需一个 entry point 组：`aro.capabilities`，不需要多套机制
+- v1.5 简报需要重写：不再是"通用装配 + 持久化"，而是"Hook 完整化 + 会话持久化 Capability"
 
 ## D3 审批跨重启：暂不改 interrupt
 
