@@ -10,11 +10,12 @@ from api.app import create_app as create_base_app
 from api.auth import require_auth
 from api.settings import APISettings
 from core.kernel.lifecycle import wait_for_cleanup
+from projects.helpdesk.services import expert_directory
 from projects.helpdesk.workbench import Workbench
 
 
 def create_app(settings: APISettings | None = None) -> FastAPI:
-    app = create_base_app(settings)
+    app = create_base_app(settings, expert_directory=expert_directory)
     store = app.state.sessions
 
     def owned(session_id: str | None) -> Workbench:

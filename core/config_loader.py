@@ -102,8 +102,15 @@ class AgentConfig:
               - memory
         """
         value = self._config.get("capabilities", [])
+        if isinstance(value, Mapping):
+            if not all(
+                isinstance(key, str) and key.strip() and isinstance(config, Mapping)
+                for key, config in value.items()
+            ):
+                raise ValueError("'capabilities' mapping requires names and configuration mappings")
+            return list(value)
         if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-            raise ValueError("'capabilities' must be a list of strings")
+            raise ValueError("'capabilities' must be a list of strings or a mapping")
         return value
 
     @property
@@ -133,7 +140,17 @@ class AgentConfig:
         value = self._config.get("capability_config", {})
         if not isinstance(value, Mapping):
             raise ValueError("'capability_config' must be a mapping")
-        return dict(value)
+        result = dict(value)
+        declared = self._config.get("capabilities", [])
+        if isinstance(declared, Mapping):
+            # Validate both views before allowing any plugin to initialize.
+            names = self.capabilities
+            for name in names:
+                config = declared[name]
+                if name in result:
+                    raise ValueError(f"Duplicate configuration for capability '{name}'")
+                result[name] = dict(config)
+        return result
 
 
 def load_llm_config() -> LLMConfig:

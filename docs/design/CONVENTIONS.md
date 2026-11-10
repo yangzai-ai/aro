@@ -57,6 +57,7 @@
 **硬性规则**：
 - `core/kernel/` **绝不** import `capabilities/`、`projects/`、`integration/`、`knowledge/`。内核是地基，不知道任何能力存在。**内核里禁止出现对具体能力的 `if`。**
 - `core/` 其余（llm / tools 契约）同样不依赖上层。
+- `api/` 不导入具体 `capabilities/` 类（含 TYPE_CHECKING）。审批、专家目录通过内核服务类型协议交互，具体适配放项目层；服务协议不是新的插件扩展点。
 - `capabilities/*` 之间**互不 import**（如 memory 不 import knowledge_tool）。需要协作时由 project 配置组合。
 - `knowledge/`、`integration/` 之间**互不 import**。
 - `projects/helpdesk/` **绝不** import `projects/finance/`。项目之间完全隔离。
@@ -87,6 +88,10 @@ v0.8 经批复增加通用生命周期：Capability 的
 `async start()` / `async close()` 默认无操作。异步装配使用
 `await AgentEngine.create(...)`，先 start 再收集工具；结束时 close，启动失败或取消也清理。
 原能力无需修改；旧同步构造仅用于没有覆盖 start 的能力，误用须明确报错。
+
+v1.5 经批复保持 Hook ABC，补齐默认无操作的 on_start / on_session_load / on_session_close / on_stop。
+异步 create 完成前等待 Hook 启动，同步构造延迟到首个 run 前；会话恢复首个非 None 胜出，必须校验调用方的 thread_id/tenant_id/user_id，冲突拒绝。关闭通知与停止清理必须幂等且取消安全。
+Entry Point 仅负责发现，Engine 仍按配置显式启用，禁用不导入；详见[插件开发说明](../plugin-development.md)。
 
 **接口设计规则**：
 - 接口只定义"做什么"，不含实现细节。参数和返回值用明确的类型（Pydantic model 或 dataclass），不用裸 dict 传递结构化数据。

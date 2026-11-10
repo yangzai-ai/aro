@@ -18,8 +18,10 @@ from api.auth import require_auth
 from api.sessions import Session, SessionStore
 from api.settings import APISettings
 from api.sse import encode_event
+from core.config_loader import AgentConfig
 from core.kernel.engine import AgentEngine
 from core.kernel.events import ExecutionEvent
+from core.kernel.services import ExpertDirectory
 
 logger = logging.getLogger(__name__)
 
@@ -122,10 +124,12 @@ async def stream_turn(request: Request, session: Session, message: str) -> Async
 def create_app(
     settings: APISettings | None = None,
     engine_factory: Callable[[], AgentEngine | Awaitable[AgentEngine]] | None = None,
+    *,
+    expert_directory: Callable[[AgentConfig], ExpertDirectory] | None = None,
 ) -> FastAPI:
     """Build the app with overridable settings/factory for isolated tests."""
     configured = settings or APISettings()
-    store = SessionStore(configured, engine_factory)
+    store = SessionStore(configured, engine_factory, expert_directory=expert_directory)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:

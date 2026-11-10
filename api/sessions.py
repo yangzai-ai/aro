@@ -2,28 +2,30 @@
 
 import asyncio
 import inspect
+import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from datetime import date
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from fastapi import HTTPException
 from langchain_core.messages import SystemMessage
 
 from api.settings import APISettings
-from capabilities.hitl.approval_manager import ApprovalManager
-from capabilities.hitl.capability import HITLCapability
 from core.config_loader import AgentConfig, load_llm_config
 from core.kernel.engine import AgentEngine
 from core.kernel.lifecycle import wait_for_cleanup
+from core.kernel.services import (
+    ApprovalService,
+    ExpertDirectory,
+    ExpertInfo,
+    LocalExpert,
+    hook_service,
+)
 from core.kernel.state import AgentState
-
-if TYPE_CHECKING:
-    from capabilities.multiagent.handle import LocalAgentHandle
-    from capabilities.multiagent.registry import AgentDescription
 
 
 @dataclass
@@ -41,12 +43,12 @@ class Session:
     task: asyncio.Task[None] | None = None
 
     @property
-    def approvals(self) -> ApprovalManager | None:
-        """Find the optional approval plugin at the allowed API composition layer."""
-        for capability in self.engine.capabilities:
-            if isinstance(capability, HITLCapability):
-                return capability.approval_manager
-        return None
+    def approvals(self) -> ApprovalService | None:
+        """Resolve the optional host service without knowing its plugin class."""
+        service = hook_service(self.engine.hooks, "approvals")
+        if service is not None and not isinstance(service, ApprovalService):
+            raise TypeError("Invalid approvals service")
+        return service
 
 
 class SessionStore:
@@ -56,6 +58,8 @@ class SessionStore:
         self,
         settings: APISettings,
         factory: Callable[[], AgentEngine | Awaitable[AgentEngine]] | None = None,
+        *,
+        expert_directory: Callable[[AgentConfig], ExpertDirectory] | None = None,
     ) -> None:
         self.settings = settings
         self.factory = factory or self._create_engine
@@ -63,34 +67,34 @@ class SessionStore:
         self._creating = 0
         self._pending: set[asyncio.Task[Any]] = set()
         self._closing = False
-        self.experts: list[AgentDescription] = []
-        self._expert_handles: dict[str, LocalAgentHandle] = {}
+        self.experts: list[ExpertInfo] = []
+        self._expert_handles: dict[str, LocalExpert] = {}
+        self._expert_directory = expert_directory
         self._experts_loaded = False
 
     def load_experts(self) -> None:
         """Load a deployment catalogue without starting engines or optional models."""
         if self._experts_loaded:
             return
-        config = AgentConfig(self.settings.config)
-        if "multiagent" in config.capabilities:
-            from capabilities.multiagent.capability import MultiAgentCapability
-            from capabilities.multiagent.handle import LocalAgentHandle
-
-            capability = MultiAgentCapability(config.capability_config["multiagent"])
-            for item in capability.registry.catalogue():
-                handle = capability.registry.get(item.name)
-                if not isinstance(handle, LocalAgentHandle):
-                    raise ValueError("Direct sessions require a local expert engine scope")
-                self._expert_handles[item.name] = handle
-            self.experts = capability.registry.catalogue()
+        if self._expert_directory is not None:
+            directory = self._expert_directory(AgentConfig(self.settings.config))
+            self.experts = list(directory.catalogue())
+            self._expert_handles = {item.name: directory.get(item.name) for item in self.experts}
         self._experts_loaded = True
 
     async def _create_engine(self) -> AgentEngine:
         config = AgentConfig(self.settings.config)
-        mode = config.capability_config.get("hitl", {}).get("mode")
-        if "hitl" in config.capabilities and mode != "api":
-            raise ValueError("HTTP service requires hitl mode=api")
-        return await AgentEngine.create(load_llm_config(), config)
+        engine = await AgentEngine.create(load_llm_config(), config)
+        try:
+            service = hook_service(engine.hooks, "approvals")
+            if service is not None and (
+                not isinstance(service, ApprovalService) or service.mode != "api"
+            ):
+                raise ValueError("HTTP service requires approval mode=api")
+        except BaseException:
+            await engine.close()
+            raise
+        return engine
 
     async def reserve(self, session_id: str | None, *, target_agent: str | None = None) -> Session:
         """Reserve before returning response headers; reject overlapping turns."""
@@ -116,7 +120,9 @@ class SessionStore:
             scope = AsyncExitStack() if target_agent is not None else None
             try:
                 if scope is not None and target_agent is not None:
-                    engine = await scope.enter_async_context(self._expert_handles[target_agent].engine_scope())
+                    engine = await scope.enter_async_context(
+                        self._expert_handles[target_agent].engine_scope()
+                    )
                     if any(tool.permission != "read" for tool in engine.tools):
                         raise ValueError("Direct local experts permit read-only tools")
                 else:
@@ -159,7 +165,14 @@ class SessionStore:
                 state["context"]["tenant_id"] = self.settings.tenant_id
                 if self.settings.user_id is not None:
                     state["context"]["user_id"] = self.settings.user_id
-                session = Session(identity, engine, state, time.monotonic(), target_agent=target_agent, scope=scope)
+                session = Session(
+                    identity,
+                    engine,
+                    state,
+                    time.monotonic(),
+                    target_agent=target_agent,
+                    scope=scope,
+                )
                 self.sessions[identity] = session
             except BaseException:
                 if scope is not None:
@@ -176,14 +189,18 @@ class SessionStore:
 
     async def close_session(self, session: Session) -> None:
         """Cancel outstanding work before closing the session's HTTP client."""
+
         async def release() -> None:
             if session.task is not None and not session.task.done():
                 session.task.cancel()
                 await asyncio.gather(session.task, return_exceptions=True)
-            if session.scope is not None:
-                await session.scope.aclose()
-            else:
-                await session.engine.close()
+            try:
+                await session.engine.close_session(session.id)
+            finally:
+                if session.scope is not None:
+                    await session.scope.aclose()
+                else:
+                    await session.engine.close()
 
         if session.close_task is None:
             session.close_task = asyncio.create_task(release())
@@ -195,7 +212,12 @@ class SessionStore:
         for key, session in list(self.sessions.items()):
             if not session.busy and now - session.updated >= self.settings.session_ttl_seconds:
                 self.sessions.pop(key, None)
-                await self.close_session(session)
+                try:
+                    await self.close_session(session)
+                except Exception as exc:
+                    logging.getLogger(__name__).warning(
+                        "Expired session cleanup failed (%s)", type(exc).__name__
+                    )
 
     async def close(self) -> None:
         """Release every session on server shutdown."""
@@ -204,5 +226,13 @@ class SessionStore:
         for task in pending:
             task.cancel()
         await asyncio.gather(*pending, return_exceptions=True)
-        await asyncio.gather(*(self.close_session(session) for session in self.sessions.values()))
+        results = await asyncio.gather(
+            *(self.close_session(session) for session in self.sessions.values()),
+            return_exceptions=True,
+        )
         self.sessions.clear()
+        for result in results:
+            if isinstance(result, BaseException):
+                logging.getLogger(__name__).warning(
+                    "Session shutdown cleanup failed (%s)", type(result).__name__
+                )

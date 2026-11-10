@@ -97,3 +97,13 @@ memory 仅依赖此中立边界，`MemoryCapability(config, *, backend=...)` 保
 multiagent 的 Supervisor 直接 await 注册的 AgentHandle，再经 `AgentResult.model_validate` 和 agent_name 一致性校验；移除单节点派发图，内核不增加派发适配层。委派权限、身份隔离、预算、超时、取消及嵌套 Trace/SSE 行为保留。
 
 运行验证使用本机 langgraph 1.2.15，依赖文件本轮未修改。验证与源码边界证据见 [主循环迁移记录](../v1.1-stategraph-migration.md)、[检查点接入记录](../v1.1-checkpointer-validation.md) 和 [Phase 2 收口验证](../v1.2-phase2-containment-validation.md)。
+
+## v1.5 通用插件与生命周期
+
+能力发现先读取 aro.capabilities 元数据，再按 YAML 选中名称加载；显式对象列表和 module 配置优先，未启用能力不导入。完整配置/生命周期/宿主服务规则见 [插件开发说明](../plugin-development.md)。
+
+Engine.create 完成能力启动和装配后等待 Hook.on_start；同步构造延迟到首次 run 前启动。每用户轮在追加输入和 Trace.start 之前调用 on_session_load，首个非 None 状态通过身份校验后才使用；原 StateGraph 与四个轮级/工具级钩子的执行逻辑保持原样。恢复不是审批续跑或工具重放。
+
+API 关闭会话先取消在途任务，再调用 Engine.close_session 通知 Hook.on_session_close；Engine.close 对尚未关闭的会话补通知，再逆序 on_stop 与能力/客户端清理。现有取消安全清理机制保留。
+
+API 依赖内核中的审批/专家目录类型协议，Helpdesk 专家目录在项目层适配；审批通过 Hook.provides 元数据暴露，原 HITLHook 不改。Trace 继续复用现有内核对象，不新增服务扩展组。

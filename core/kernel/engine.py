@@ -13,14 +13,16 @@
 import asyncio
 import logging
 import uuid
+from copy import deepcopy
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from core.config_loader import AgentConfig, LLMConfig
 from core.kernel.capability import Capability
 from core.kernel.checkpoint import default_checkpointer
+from core.kernel.discovery import discover_capabilities
 from core.kernel.events import EventSink, event_scope
 from core.kernel.hook import Hook
 from core.kernel.lifecycle import wait_for_cleanup
@@ -54,6 +56,7 @@ class AgentEngine:
         agent_config: AgentConfig,
         *,
         checkpointer: BaseCheckpointSaver[Any] | None = None,
+        capabilities: list[Capability] | None = None,
     ):
         """初始化执行引擎.
 
@@ -62,7 +65,9 @@ class AgentEngine:
             agent_config: Agent 配置（从 YAML）
         """
         self._configure(llm_config, agent_config, checkpointer)
-        self.capabilities = self._load_capabilities()
+        self.capabilities = (
+            self._load_capabilities() if capabilities is None else list(capabilities)
+        )
         if any(type(item).start is not Capability.start for item in self.capabilities):
             raise RuntimeError("Async capabilities require await AgentEngine.create(...)")
         self.llm = self._init_llm()
@@ -82,6 +87,12 @@ class AgentEngine:
         self.checkpointer = default_checkpointer() if checkpointer is None else checkpointer
         self._owns_checkpointer = checkpointer is None
         self._checkpoint_threads: set[str] = set()
+        self.hooks: list[Hook] = []
+        self._started_hooks: list[Hook] = []
+        self._start_task: asyncio.Task[None] | None = None
+        self._session_ids: set[str] = set()
+        self._session_close_tasks: dict[str, asyncio.Task[None]] = {}
+        self._running = False
 
     def _assemble(self) -> None:
         self.tools = self._collect_tools()
@@ -97,16 +108,20 @@ class AgentEngine:
         agent_config: AgentConfig,
         *,
         checkpointer: BaseCheckpointSaver[Any] | None = None,
+        capabilities: list[Capability] | None = None,
     ) -> "AgentEngine":
         """Start capabilities before collecting tools; roll back on failure/cancellation."""
         engine = cls.__new__(cls)
         engine._configure(llm_config, agent_config, checkpointer)
         try:
-            engine.capabilities = engine._load_capabilities()
+            engine.capabilities = (
+                engine._load_capabilities() if capabilities is None else list(capabilities)
+            )
             engine.llm = engine._init_llm()
             for capability in engine.capabilities:
                 await capability.start()
             engine._assemble()
+            await engine.start()
         except BaseException:
             try:
                 await engine.close()
@@ -126,6 +141,25 @@ class AgentEngine:
 
     async def _close_resources(self) -> None:
         interrupted = False
+        if self._start_task is not None:
+            if not self._start_task.done():
+                self._start_task.cancel()
+            await asyncio.gather(self._start_task, return_exceptions=True)
+        for session_id in list(self._session_ids):
+            try:
+                await self.close_session(session_id)
+            except (Exception, asyncio.CancelledError) as exc:
+                interrupted = True
+                logging.getLogger(__name__).warning(
+                    "Session cleanup failed (%s)", type(exc).__name__
+                )
+        for hook in reversed(self._started_hooks):
+            try:
+                if hasattr(hook, "on_stop"):
+                    await hook.on_stop()
+            except (Exception, asyncio.CancelledError) as exc:
+                interrupted = True
+                logging.getLogger(__name__).warning("Hook cleanup failed (%s)", type(exc).__name__)
         for capability in reversed(self.capabilities):
             try:
                 await capability.close()
@@ -148,6 +182,94 @@ class AgentEngine:
             self._checkpoint_threads.clear()
         if interrupted:
             raise RuntimeError("Cleanup was interrupted; remaining cleanup was attempted")
+
+    async def start(self) -> None:
+        """Start hooks once; synchronous construction defers this to first run."""
+        if self._closed:
+            raise RuntimeError("Engine is closed")
+        if self._start_task is None:
+            self._start_task = asyncio.create_task(self._start_hooks())
+        try:
+            await asyncio.shield(self._start_task)
+            if self._closed:
+                raise RuntimeError("Engine is closed")
+        except BaseException:
+            try:
+                await self.close()
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    "Hook startup rollback failed (%s)", type(exc).__name__
+                )
+            raise
+
+    async def _start_hooks(self) -> None:
+        config = {
+            "capabilities": list(self.agent_config.capabilities),
+            "capability_config": self.agent_config.capability_config,
+            "tools": list(self.agent_config.tools),
+            "system_prompt": self.agent_config.system_prompt,
+            "llm": self.agent_config.llm_config,
+        }
+        for hook in self.hooks:
+            self._started_hooks.append(hook)
+            if hasattr(hook, "on_start"):
+                await hook.on_start(deepcopy(config))
+
+    async def load_session(self, state: AgentState) -> AgentState:
+        """Load before adding new input; caller identities remain authoritative."""
+        await self.start()
+        session_id = runtime_context(state, create=True).setdefault("thread_id", str(uuid.uuid4()))
+        if session_id in self._session_close_tasks:
+            raise RuntimeError("Session is closed")
+        self._session_ids.add(session_id)
+        # Snapshot identities before plugin callbacks can affect their own stores.
+        identity = {key: state["context"].get(key) for key in ("thread_id", "tenant_id", "user_id")}
+        for hook in self.hooks:
+            if not hasattr(hook, "on_session_load"):
+                continue
+            loaded = await hook.on_session_load(session_id)
+            if loaded is None:
+                continue
+            if not isinstance(loaded, dict) or not isinstance(loaded.get("messages"), list):
+                raise ValueError("Invalid restored AgentState")
+            if not all(isinstance(message, BaseMessage) for message in loaded["messages"]):
+                raise ValueError("Invalid restored messages")
+            context = loaded.get("context", {})
+            if not isinstance(context, dict):
+                raise ValueError("Invalid restored context")
+            for key, expected in identity.items():
+                if key in context and context[key] != expected:
+                    raise ValueError(f"Restored session identity conflict: {key}")
+            if "tenant_id" in loaded and loaded["tenant_id"] != state.get("tenant_id"):
+                raise ValueError("Restored session identity conflict: top-level tenant_id")
+            restored = deepcopy(loaded)
+            restored["context"] = {**restored.get("context", {}), **state["context"]}
+            if "tenant_id" in state:
+                restored["tenant_id"] = state["tenant_id"]
+            return restored
+        return state
+
+    async def close_session(self, session_id: str) -> None:
+        """Notify every hook once per session, draining cleanup on cancellation."""
+
+        async def notify() -> None:
+            failed = False
+            for hook in reversed(self.hooks):
+                try:
+                    if hasattr(hook, "on_session_close"):
+                        await hook.on_session_close(session_id)
+                except (Exception, asyncio.CancelledError) as exc:
+                    failed = True
+                    logging.getLogger(__name__).warning(
+                        "Session hook failed (%s)", type(exc).__name__
+                    )
+            self._session_ids.discard(session_id)
+            if failed:
+                raise RuntimeError("Session hook cleanup failed; remaining cleanup was attempted")
+
+        if session_id not in self._session_close_tasks:
+            self._session_close_tasks[session_id] = asyncio.create_task(notify())
+        await wait_for_cleanup(self._session_close_tasks[session_id])
 
     def _init_llm(self) -> OpenAICompatibleProvider:
         """初始化 LLM Provider.
@@ -181,10 +303,19 @@ class AgentEngine:
         Returns:
             list[Capability]: Capability 实例列表
         """
+        configurations = self.agent_config.capability_config
         for name in self.agent_config.capabilities:
-            self.capabilities.extend(
-                PluginLoader().load([name], self.agent_config.capability_config)
+            # Explicit module paths always win. Entry point discovery loads only
+            # this configured name, retaining configuration order and ownership.
+            discovered = (
+                {}
+                if "module" in configurations.get(name, {})
+                else discover_capabilities(
+                    [name], configurations, strict=True, owned=self.capabilities
+                )
             )
+            if name not in discovered:
+                self.capabilities.extend(PluginLoader().load([name], configurations))
         return self.capabilities
 
     def _collect_tools(self) -> list[BaseTool]:
@@ -222,6 +353,26 @@ class AgentEngine:
         stream: bool = False,
         on_event: EventSink | None = None,
     ) -> AgentState:
+        """Execute one user turn, with initialization and restoration serialized."""
+        if self._running:
+            raise RuntimeError("AgentEngine supports one active conversation turn at a time")
+        self._running = True
+        try:
+            return await self._run_turn(
+                user_input, state, max_tool_rounds=max_tool_rounds, stream=stream, on_event=on_event
+            )
+        finally:
+            self._running = False
+
+    async def _run_turn(
+        self,
+        user_input: str,
+        state: AgentState | None = None,
+        *,
+        max_tool_rounds: int = 8,
+        stream: bool = False,
+        on_event: EventSink | None = None,
+    ) -> AgentState:
         """执行一轮对话.
 
         Args:
@@ -244,6 +395,7 @@ class AgentEngine:
             if self.agent_config.system_prompt:
                 state["messages"].append(SystemMessage(content=self.agent_config.system_prompt))
 
+        state = await self.load_session(state)
         # 添加用户消息
         state["messages"].append(HumanMessage(content=user_input))
         runtime_context(state, create=True).setdefault("thread_id", str(uuid.uuid4()))

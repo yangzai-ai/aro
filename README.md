@@ -241,3 +241,7 @@ uv pip install --python .venv/Scripts/python.exe -e ".[dev]"
 ---
 
 进一步阅读：[部署与配置](docs/operations.md) · [工程约定](docs/design/CONVENTIONS.md) · [Helpdesk 项目说明](projects/helpdesk/README.md) · [路线图](ROADMAP.md) · [贡献指南](CONTRIBUTING.md)
+
+### 外部插件与完整生命周期
+
+框架支持通过 Python `aro.capabilities` Entry Point 安装外部能力，仍由 YAML 显式启用。Hook 增加启动、会话加载、会话关闭和停止阶段；BaseTool 与 Capability 基类保持不变。配置示例、身份边界和宿主服务说明见[插件开发说明](docs/plugin-development.md)。v1.5 仅提供框架机制，会话持久化插件留待后续版本。

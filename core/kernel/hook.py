@@ -14,6 +14,7 @@ Hook与工具的区别：
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from typing import Any
 
 from core.kernel.state import AgentState
@@ -36,6 +37,20 @@ class Hook(ABC):
     """
 
     _handles_write: bool = False
+    provides: Mapping[str, object] = {}
+
+    async def on_start(self, config: dict[str, Any]) -> None:  # noqa: B027
+        """Initialize once per engine before its first user turn."""
+
+    async def on_session_load(self, session_id: str) -> AgentState | None:
+        """Optionally restore a session; the first non-None result wins."""
+        return None
+
+    async def on_session_close(self, session_id: str) -> None:  # noqa: B027
+        """Release session-owned data when the host closes that session."""
+
+    async def on_stop(self) -> None:  # noqa: B027
+        """Release resources owned by on_start, including partial startup."""
 
     def bind_tools(self, tools: dict[str, BaseTool]) -> None:  # noqa: B027
         """Optionally receive the executable tool registry during assembly."""

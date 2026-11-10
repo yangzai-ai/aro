@@ -27,6 +27,8 @@ class HITLCapability(Capability):
         settings = HITLConfig.model_validate(config)
         self.approval_manager = ApprovalManager(settings.mode, settings.timeout_seconds)
         self.hook = HITLHook(self.approval_manager, tool_map)
+        # Assembly metadata only; HITLHook's approval behavior is unchanged.
+        self.hook.provides = {"approvals": self.approval_manager}
 
     @property
     def name(self) -> str:
