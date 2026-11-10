@@ -122,7 +122,7 @@ async def main() -> None:
             question = "当前有几个待处理的工单？"
             state = await complete_turn(engine, question, None)
             print(f"用户：{question}\n助手：{state['messages'][-1].content}")
-            trace = engine.trace_middleware.get_latest_trace()
+            trace = engine.trace_hook.get_latest_trace()
             if trace:
                 print_trace(trace)
             return
@@ -148,7 +148,7 @@ async def main() -> None:
                         tenant_id=arguments.tenant_id,
                     )
                     print(f"助手：{state['messages'][-1].content}")
-                    trace = engine.trace_middleware.get_latest_trace()
+                    trace = engine.trace_hook.get_latest_trace()
                     if trace:
                         print_trace(trace)
             except (EOFError, KeyboardInterrupt):

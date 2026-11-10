@@ -112,7 +112,7 @@ class OpenAPITool(BaseTool):
 
     async def run(self, **kwargs: Any) -> ToolResult:
         """Validate and map arguments, execute HTTP, and preserve structured responses."""
-        # Agent-originated write authorization belongs to KernelLoop middleware.
+        # Agent-originated write authorization belongs to KernelLoop hook.
         # Direct run() calls are trusted application code, like other BaseTools.
         if self.permission == "forbidden":
             return ToolResult(

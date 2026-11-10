@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from capabilities.multiagent.handle import AgentContext, AgentResult
 from capabilities.multiagent.registry import AgentRegistry
-from core.kernel.middleware import Middleware
+from core.kernel.hook import Hook
 from core.kernel.state import AgentState
 from core.tools.base import BaseTool, PermissionLevel, ToolResult
 
@@ -46,7 +46,7 @@ class TurnScope:
     calls: int = 0
 
 
-class DelegationMiddleware(Middleware):
+class DelegationHook(Hook):
     """Bind trusted identity and one delegation budget across all model subrounds."""
 
     def __init__(self, scope: ContextVar[TurnScope | None]) -> None:

@@ -1,13 +1,13 @@
 """Engine - capability assembler and executor.
 
-执行引擎：装配 Capabilities，收集 tools + middlewares，交给内核循环。
+执行引擎：装配 Capabilities，收集 tools + hooks，交给内核循环。
 这是"插件化"机制的实现：
 - 读取配置中的 capabilities 列表
 - 动态加载对应的 Capability 实例
-- 收集它们贡献的 tools 和 middlewares
+- 收集它们贡献的 tools 和 hooks
 - 传给内核循环
 
-内核循环本身不知道 Capability 的存在，只知道 tools + middlewares。
+内核循环本身不知道 Capability 的存在，只知道 tools + hooks。
 """
 
 import asyncio
@@ -22,12 +22,12 @@ from core.config_loader import AgentConfig, LLMConfig
 from core.kernel.capability import Capability
 from core.kernel.checkpoint import default_checkpointer
 from core.kernel.events import EventSink, event_scope
+from core.kernel.hook import Hook
 from core.kernel.lifecycle import wait_for_cleanup
 from core.kernel.loop import KernelLoop, KernelRun
-from core.kernel.middleware import Middleware
 from core.kernel.plugin_loader import PluginLoader
 from core.kernel.state import AgentState, runtime_context
-from core.kernel.trace import TraceMiddleware
+from core.kernel.trace import TraceHook
 from core.llm.openai_provider import OpenAICompatibleProvider
 from core.tools.base import BaseTool
 
@@ -37,7 +37,7 @@ class AgentEngine:
 
     职责：
     1. 根据配置动态加载 Capabilities
-    2. 收集 Capabilities 贡献的 tools 和 middlewares
+    2. 收集 Capabilities 贡献的 tools 和 hooks
     3. 初始化 LLM Provider
     4. 创建内核循环
     5. 提供统一的执行接口
@@ -85,10 +85,10 @@ class AgentEngine:
 
     def _assemble(self) -> None:
         self.tools = self._collect_tools()
-        self.middlewares = self._collect_middlewares()
-        self.trace_middleware = TraceMiddleware()
-        self.middlewares.insert(0, self.trace_middleware)
-        self.loop = KernelLoop(llm=self.llm, tools=self.tools, middlewares=self.middlewares)
+        self.hooks = self._collect_hooks()
+        self.trace_hook = TraceHook()
+        self.hooks.insert(0, self.trace_hook)
+        self.loop = KernelLoop(llm=self.llm, tools=self.tools, hooks=self.hooks)
 
     @classmethod
     async def create(
@@ -202,16 +202,16 @@ class AgentEngine:
         enabled = set(self.agent_config.tools)
         return [tool for tool in tools if tool.name in enabled]
 
-    def _collect_middlewares(self) -> list[Middleware]:
-        """收集所有 Capabilities 贡献的中间件.
+    def _collect_hooks(self) -> list[Hook]:
+        """收集所有 Capabilities 贡献的Hook.
 
         Returns:
-            list[Middleware]: 中间件列表
+            list[Hook]: Hook列表
         """
-        middlewares: list[Middleware] = []
+        hooks: list[Hook] = []
         for capability in self.capabilities:
-            middlewares.extend(capability.middlewares())
-        return middlewares
+            hooks.extend(capability.hooks())
+        return hooks
 
     async def run(
         self,
@@ -235,7 +235,7 @@ class AgentEngine:
             raise RuntimeError("Engine is closed")
         if max_tool_rounds < 0:
             raise ValueError("max_tool_rounds must be nonnegative")
-        if self.trace_middleware.current_trace is not None:
+        if self.trace_hook.current_trace is not None:
             raise RuntimeError("AgentEngine supports one active conversation turn at a time")
         # 初始化状态（如果是第一轮）
         if state is None:
@@ -248,7 +248,7 @@ class AgentEngine:
         state["messages"].append(HumanMessage(content=user_input))
         runtime_context(state, create=True).setdefault("thread_id", str(uuid.uuid4()))
         self._checkpoint_threads.add(runtime_context(state)["thread_id"])
-        self.trace_middleware.start(state)
+        self.trace_hook.start(state)
         frame = KernelRun(state)
         try:
             with event_scope(on_event):
@@ -260,7 +260,7 @@ class AgentEngine:
                 )
                 return state
         except BaseException as exc:
-            self.trace_middleware.finish(frame.state, error=type(exc).__name__)
+            self.trace_hook.finish(frame.state, error=type(exc).__name__)
             raise
         finally:
-            self.trace_middleware.finish(frame.state)
+            self.trace_hook.finish(frame.state)

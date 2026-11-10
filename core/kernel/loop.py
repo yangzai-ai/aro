@@ -5,9 +5,9 @@
 - 接收 messages
 - 调用 LLM
 - 如果 LLM 返回 tool_calls，执行工具
-- 执行前后调用中间件
+- 执行前后调用Hook
 
-无工具、无中间件时，这就是一个裸 LLM 对话。
+无工具、无Hook时，这就是一个裸 LLM 对话。
 """
 
 import asyncio
@@ -26,10 +26,10 @@ from langgraph.graph import END, START, StateGraph
 
 from core.kernel.checkpoint import default_checkpointer
 from core.kernel.events import emit_event
-from core.kernel.middleware import Middleware
+from core.kernel.hook import Hook
 from core.kernel.state import AgentState, runtime_context
 from core.kernel.streaming import collect_stream
-from core.kernel.trace import TraceMiddleware
+from core.kernel.trace import TraceHook
 from core.llm.provider import LLMProvider
 from core.tools.base import BaseTool, ToolResult
 
@@ -55,36 +55,36 @@ class KernelLoop:
     """最小 LLM 循环.
 
     职责：
-    1. 执行前调用所有中间件的 before 钩子
+    1. 执行前调用所有Hook的 before 钩子
     2. 调用 LLM
     3. 如果有 tool_calls，执行工具
-    4. 执行后调用所有中间件的 after 钩子（逆序）
+    4. 执行后调用所有Hook的 after 钩子（逆序）
 
     这个循环对具体能力零认知：
     - 不知道有没有知识库
     - 不知道有没有记忆
     - 不知道有没有 HITL
-    - 只知道"有一些工具"和"有一些中间件"
+    - 只知道"有一些工具"和"有一些Hook"
 
-    能力通过提供工具和中间件来扩展循环，而不是修改循环本身。
+    能力通过提供工具和Hook来扩展循环，而不是修改循环本身。
     """
 
     def __init__(
         self,
         llm: LLMProvider,
         tools: list[BaseTool] | None = None,
-        middlewares: list[Middleware] | None = None,
+        hooks: list[Hook] | None = None,
     ):
         """初始化内核循环.
 
         Args:
             llm: LLM Provider
             tools: 工具列表（可以为空）
-            middlewares: 中间件列表（可以为空）
+            hooks: Hook列表（可以为空）
         """
         self.llm = llm
         self.tools = tools or []
-        self.middlewares = middlewares or []
+        self.hooks = hooks or []
 
         if len({tool.name for tool in self.tools}) != len(self.tools):
             raise ValueError("Duplicate tool names are not allowed")
@@ -94,8 +94,8 @@ class KernelLoop:
 
         # 过滤 forbidden 工具（不进 LLM 可调用列表）
         self._available_tools = [tool for tool in self.tools if tool.permission != "forbidden"]
-        for middleware in self.middlewares:
-            middleware.bind_tools(dict(self._tool_map))
+        for hook in self.hooks:
+            hook.bind_tools(dict(self._tool_map))
 
     async def run_once(self, state: AgentState, *, stream: bool = False) -> AgentState:
         """Execute exactly one model round using the same graph as Engine.run."""
@@ -166,8 +166,8 @@ class KernelLoop:
     async def _agent(self, values: _GraphState, frame: KernelRun, *, stream: bool) -> _GraphState:
         state = frame.state = values["business"]
         # 1. Before 钩子（正序执行）
-        for middleware in self.middlewares:
-            state = await middleware.before(state)
+        for hook in self.hooks:
+            state = await hook.before(state)
             frame.state = state
 
         # 2. 调用 LLM
@@ -202,16 +202,16 @@ class KernelLoop:
             started = time.perf_counter()
             wall_started = time.time()
             trace_offsets = {
-                middleware: len(middleware.current_trace.tool_calls)
-                for middleware in self.middlewares
-                if isinstance(middleware, TraceMiddleware) and middleware.current_trace is not None
+                hook: len(hook.current_trace.tool_calls)
+                for hook in self.hooks
+                if isinstance(hook, TraceHook) and hook.current_trace is not None
             }
             runtime_context(state, create=True)["tool_call_id"] = tool_id
             await emit_event(
                 "tool_call", call_id=tool_id, tool_name=tool_name, args=deepcopy(tool_args)
             )
 
-            # 工具级中间件可以在执行前拦截调用。
+            # 工具级Hook可以在执行前拦截调用。
             should_execute = True
             error_message: str | None = None
             tool = self._tool_map.get(tool_name)
@@ -219,10 +219,10 @@ class KernelLoop:
             execution_duration_ms = 0.0
             authorization_started = time.perf_counter()
             try:
-                for middleware in self.middlewares:
-                    if tool and tool.permission == "write" and middleware._handles_write:
+                for hook in self.hooks:
+                    if tool and tool.permission == "write" and hook._handles_write:
                         approval_duration_ms = 0.0
-                    allowed, message = await middleware.before_tool(
+                    allowed, message = await hook.before_tool(
                         tool_name, deepcopy(tool_args), state
                     )
                     if not allowed:
@@ -245,7 +245,7 @@ class KernelLoop:
             elif (
                 tool
                 and tool.permission == "write"
-                and not any(middleware._handles_write for middleware in self.middlewares)
+                and not any(hook._handles_write for hook in self.hooks)
             ):
                 result = ToolResult(
                     success=False,
@@ -298,15 +298,15 @@ class KernelLoop:
                 )
 
             state["messages"].append(tool_message)
-            middleware_errors: list[dict[str, str]] = []
-            for middleware in self.middlewares:
+            hook_errors: list[dict[str, str]] = []
+            for hook in self.hooks:
                 # Preserve canonical message identity (including delegation identity).
                 # context stays shared: persistence/observability writes are permitted.
                 messages = state["messages"]
                 try:
                     view = state.copy()
                     view["messages"] = deepcopy(messages)
-                    updated = await middleware.after_tool(
+                    updated = await hook.after_tool(
                         tool_name, deepcopy(tool_args), deepcopy(result), view
                     )
                     state = updated.copy()
@@ -314,9 +314,9 @@ class KernelLoop:
                     frame.state = state
                 except Exception as exc:
                     # Never persist raw exception text: it can contain credentials.
-                    middleware_errors.append(
+                    hook_errors.append(
                         {
-                            "middleware": type(middleware).__name__,
+                            "hook_class": type(hook).__name__,
                             "hook": "after_tool",
                             "error_type": type(exc).__name__,
                         }
@@ -333,7 +333,7 @@ class KernelLoop:
                     duration_ms,
                     approval_duration_ms,
                     execution_duration_ms,
-                    middleware_errors,
+                    hook_errors,
                 )
             await emit_event(
                 "tool_result",
@@ -346,15 +346,15 @@ class KernelLoop:
                 duration_ms=duration_ms,
                 approval_duration_ms=approval_duration_ms,
                 execution_duration_ms=execution_duration_ms,
-                middleware_errors=deepcopy(middleware_errors),
+                hook_errors=deepcopy(hook_errors),
             )
 
         return _GraphState(business=state, calls=[], rounds=values["rounds"])
 
     async def _after(self, values: _GraphState, frame: KernelRun) -> _GraphState:
         state = frame.state = values["business"]
-        for middleware in reversed(self.middlewares):
-            state = await middleware.after(state)
+        for hook in reversed(self.hooks):
+            state = await hook.after(state)
             frame.state = state
         return _GraphState(business=state, calls=[], rounds=values["rounds"] + 1)
 

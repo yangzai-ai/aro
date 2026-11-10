@@ -112,7 +112,7 @@ async def test_neutral_backend_injection_preserves_paging_duplicates_and_exact_s
 
 async def test_hybrid_automatic_write_read_scope_and_model_cannot_select_identity():
     capability = MemoryCapability({}, backend=InMemoryKVStore())
-    assert capability.tools() and capability.middlewares()
+    assert capability.tools() and capability.hooks()
     assert capability.search_tool.permission == "read"
     first = state()
     await capability.writer.before(first)
@@ -284,7 +284,7 @@ async def test_engine_cross_session_automatic_write_tool_read_and_isolation(tmp_
         fresh["messages"] = []
         answer = await second.run("我负责哪个区域？", fresh, stream=stream)
         assert "网络" in answer["messages"][-1].content
-        assert len(second.trace_middleware.get_latest_trace().tool_calls) == 1
+        assert len(second.trace_hook.get_latest_trace().tool_calls) == 1
         for user, tenant in [("bob", "one"), ("alice", "other")]:
             isolated = state(user=user, tenant=tenant, thread=str(uuid.uuid4()))
             isolated["messages"] = []
@@ -293,7 +293,7 @@ async def test_engine_cross_session_automatic_write_tool_read_and_isolation(tmp_
         await second.run(
             "今天几号？", AgentState(messages=[], context={"user_id": "alice"}), stream=stream
         )
-        assert not second.trace_middleware.get_latest_trace().tool_calls
+        assert not second.trace_hook.get_latest_trace().tool_calls
     finally:
         await first.llm._client.close()
         await second.llm._client.close()

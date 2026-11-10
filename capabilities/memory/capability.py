@@ -1,16 +1,16 @@
-"""L2 hybrid capability: one read tool and one automatic write middleware."""
+"""L2 hybrid capability: one read tool and one automatic write hook."""
 
 from contextvars import ContextVar
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from capabilities.memory.hook import MemoryWriteHook
 from capabilities.memory.identity import Namespace
-from capabilities.memory.middleware import MemoryWriteMiddleware
 from capabilities.memory.store import MemoryStore
 from capabilities.memory.tool import SearchMemoryTool
 from core.kernel.capability import Capability
-from core.kernel.middleware import Middleware
+from core.kernel.hook import Hook
 from core.kernel.store import KVStore, shared_store
 from core.tools.base import BaseTool
 
@@ -33,7 +33,7 @@ class MemoryCapability(Capability):
         )
         scope: ContextVar[Namespace | None] = ContextVar("memory_namespace", default=None)
         self.search_tool = SearchMemoryTool(self.store, scope, self.config.timeout_seconds)
-        self.writer = MemoryWriteMiddleware(self.store, scope, self.config.timeout_seconds)
+        self.writer = MemoryWriteHook(self.store, scope, self.config.timeout_seconds)
 
     @property
     def name(self) -> str:
@@ -42,7 +42,7 @@ class MemoryCapability(Capability):
     def tools(self) -> list[BaseTool]:
         return [self.search_tool]
 
-    def middlewares(self) -> list[Middleware]:
+    def hooks(self) -> list[Hook]:
         return [self.writer]
 
 

@@ -218,7 +218,7 @@ async def test_engine_mixed_tools_default_write_hitl_trace(tmp_path, monkeypatch
         assert "query_tickets" in names and "mcp_fs__read_file" in names
         engine.loop.llm = ToolProvider("mcp_fs__read_file")
         await engine.run("read")
-        trace = engine.trace_middleware.get_latest_trace()
+        trace = engine.trace_hook.get_latest_trace()
         assert trace.tool_calls[0].success is expected
         assert bool(calls) is expected
     finally:
@@ -276,7 +276,7 @@ async def test_read_override_skips_hitl_and_forbidden_is_hidden(tmp_path, monkey
         assert "mcp_fs__hidden" not in {t.name for t in engine.tools}
         engine.loop.llm = ToolProvider("mcp_fs__read_file")
         await engine.run("read")
-        assert calls and engine.trace_middleware.get_latest_trace().tool_calls[0].success
+        assert calls and engine.trace_hook.get_latest_trace().tool_calls[0].success
     finally:
         await engine.close()
 

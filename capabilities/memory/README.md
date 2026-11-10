@@ -1,7 +1,7 @@
 # L2 长期记忆能力（v0.6）
 
-`memory` 是混合 Capability：提供 `search_memory` read 工具和自动写入中间件。
-工具按需读历史事实；中间件在本轮最终模型回复后抽取并写入，无需“保存记忆”工具。
+`memory` 是混合 Capability：提供 `search_memory` read 工具和自动写入Hook。
+工具按需读历史事实；Hook在本轮最终模型回复后抽取并写入，无需“保存记忆”工具。
 不改变 L1 messages，也不使用或修改 L3 知识库；core 未增加记忆分支或导入。
 
 ## 使用与事实范围
@@ -89,7 +89,7 @@ namespace 为 `("aro", "l2", tenant, "user", user_id)`；身份从受信任的
 同用户不同 thread 共享；不同 tenant/user 隔离；user 与 thread 名相同也不会碰撞。
 
 工具 schema 只允许 query 与 limit，模型不能指定用户、租户或 namespace。
-中间件通过能力内部 ContextVar 传递当前运行身份，避免并发任务串读。
+Hook通过能力内部 ContextVar 传递当前运行身份，避免并发任务串读。
 默认 KV 后端的检索接口是前缀查询，适配器还检查 namespace 完全相等，排除子空间结果。
 这些是数据分区，不是身份认证；不得把客户端自报用户名直接当成受信任身份。
 

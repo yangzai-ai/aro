@@ -27,12 +27,12 @@ class TestBasicToolsCapability:
         assert tools[0].name == "get_current_time"
         assert tools[0].permission == "read"
 
-    def test_no_middlewares(self) -> None:
-        """测试不提供中间件."""
+    def test_no_hooks(self) -> None:
+        """测试不提供Hook."""
         capability = BasicToolsCapability()
-        middlewares = capability.middlewares()
+        hooks = capability.hooks()
 
-        assert len(middlewares) == 0
+        assert len(hooks) == 0
 
     @pytest.mark.asyncio
     async def test_tool_execution(self) -> None:

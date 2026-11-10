@@ -67,7 +67,7 @@ async def test_uniform_handle_through_graph_and_dynamic_tool_description():
     registry = AgentRegistry()
     registry.register(handle)
     capability = MultiAgentCapability({}, registry=registry)
-    assert capability.tools() and capability.middlewares()
+    assert capability.tools() and capability.hooks()
     assert handle.description in capability.delegate_tool.description
     assert capability.delegate_tool.schema["properties"]["agent_name"]["enum"] == [handle.name]
     identity = AgentContext(thread_id="thread", user_id="trusted", tenant_id="tenant")
@@ -92,26 +92,26 @@ async def test_budget_identity_validation_and_model_cannot_forge_context():
     cap = MultiAgentCapability({}, registry=registry)
     assert not (await cap.delegate_tool.run(agent_name=handle.name, task="x")).success
     state = runtime_state()
-    await cap.middleware.before(state)
+    await cap.hook.before(state)
     assert not (
         await cap.delegate_tool.run(agent_name=handle.name, task="x", user_id="bob")
     ).success
     state["context"]["tool_call_id"] = "parent"
-    await cap.middleware.before_tool("delegate_agent", {}, state)
+    await cap.hook.before_tool("delegate_agent", {}, state)
     result = await cap.delegate_tool.run(agent_name=handle.name, task="x")
     assert result.success
     assert handle.calls[0][1].user_id == "alice"
     assert handle.calls[0][1].parent_call_id == "parent"
-    await cap.middleware.before(state)  # another model subround, same turn
+    await cap.hook.before(state)  # another model subround, same turn
     assert not (await cap.delegate_tool.run(agent_name=handle.name, task="x")).success
     state["messages"].append(AIMessage(content="done"))
-    await cap.middleware.after(state)
+    await cap.hook.after(state)
     assert not (await cap.delegate_tool.run(agent_name=handle.name, task="x")).success
-    await cap.middleware.before(runtime_state(thread="new"))
+    await cap.hook.before(runtime_state(thread="new"))
     assert (await cap.delegate_tool.run(agent_name=handle.name, task="x")).success
     nested = runtime_state()
     nested["context"]["delegation_depth"] = 1
-    await cap.middleware.before(nested)
+    await cap.hook.before(nested)
     assert not (await cap.delegate_tool.run(agent_name=handle.name, task="x")).success
 
 
@@ -130,7 +130,7 @@ async def test_failures_are_bounded_and_do_not_expose_exceptions(failure, caplog
     registry = AgentRegistry()
     registry.register(Broken())
     cap = MultiAgentCapability({"timeout_seconds": 0.01}, registry=registry)
-    await cap.middleware.before(runtime_state())
+    await cap.hook.before(runtime_state())
     result = await asyncio.wait_for(
         cap.delegate_tool.run(
             agent_name="missing" if failure == "unknown" else "arbitrary_domain", task="x"
@@ -238,7 +238,7 @@ def parent_factory(tmp_path, target="helpdesk_data", hold=None, cleanup=None, ch
     parent.loop.tools = parent.tools
     parent.loop._tool_map.update({tool.name: tool for tool in cap.tools()})
     parent.loop._available_tools.extend(cap.tools())
-    parent.middlewares.extend(cap.middlewares())
+    parent.hooks.extend(cap.hooks())
     return parent
 
 
@@ -256,7 +256,7 @@ async def test_full_nested_engine_trace_events_and_no_shared_state(tmp_path, str
     try:
         result = await engine.run("今天有几个待更新工单？", state, stream=stream, on_event=receive)
         assert "2" in result["messages"][-1].content
-        trace = engine.trace_middleware.get_latest_trace().to_dict()
+        trace = engine.trace_hook.get_latest_trace().to_dict()
         delegated = trace["tool_calls"][0]
         assert delegated["tool_name"] == "delegate_agent"
         assert delegated["result"]["agent_name"] == "helpdesk_data"
@@ -293,7 +293,7 @@ async def test_cancellation_cleans_child_and_outer_sink_is_restored(tmp_path):
     with pytest.raises(asyncio.CancelledError):
         await task
     assert closed.is_set()
-    assert engine.trace_middleware.current_trace is None
+    assert engine.trace_hook.current_trace is None
     await engine.llm._client.close()
 
 
@@ -326,8 +326,8 @@ async def test_context_and_events_do_not_cross_concurrent_parents(tmp_path):
         ]
         assert ids[0].isdisjoint(ids[1])
         assert (
-            first.trace_middleware.get_latest_trace().thread_id
-            != second.trace_middleware.get_latest_trace().thread_id
+            first.trace_hook.get_latest_trace().thread_id
+            != second.trace_hook.get_latest_trace().thread_id
         )
     finally:
         await first.llm._client.close()

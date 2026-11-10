@@ -185,7 +185,7 @@ async def test_default_api_cold_overlap_sharing_sources_and_session_isolation(kn
         assert one.engine is not two.engine and one.engine.llm is not two.engine.llm
         assert one.state is not two.state and one.state["messages"] is not two.state["messages"]
         assert one.id != two.id and one.approvals is not two.approvals
-        assert one.engine.trace_middleware is not two.engine.trace_middleware
+        assert one.engine.trace_hook is not two.engine.trace_hook
         k1, k2 = [next(c for c in x.engine.capabilities if c.name == "knowledge") for x in sessions]
         assert k1.embedding_model is k2.embedding_model and k1.reranker is k2.reranker
         assert k1.vectordb is k2.vectordb and k1.retriever is not k2.retriever

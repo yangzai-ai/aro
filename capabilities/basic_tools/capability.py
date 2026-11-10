@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any
 
 from core.kernel.capability import Capability
-from core.kernel.middleware import Middleware
+from core.kernel.hook import Hook
 from core.tools.base import BaseTool, ToolResult
 
 
@@ -73,8 +73,8 @@ class BasicToolsCapability(Capability):
         """提供工具列表."""
         return [GetCurrentTimeTool()]
 
-    def middlewares(self) -> list[Middleware]:
-        """不提供中间件."""
+    def hooks(self) -> list[Hook]:
+        """不提供Hook."""
         return []
 
 

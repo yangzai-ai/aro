@@ -10,7 +10,7 @@ from core.kernel.events import event_scope
 from core.kernel.loop import KernelLoop
 from core.kernel.state import AgentState
 from core.kernel.streaming import collect_stream
-from tests.test_kernel_loop import FakeLLMProvider, FakeTool, SpyMiddleware
+from tests.test_kernel_loop import FakeLLMProvider, FakeTool, SpyHook
 
 
 class Chunks(FakeLLMProvider):
@@ -109,10 +109,10 @@ async def test_large_arguments_rejected():
         )
 
 
-async def test_stream_path_fires_the_same_middleware_hooks():
+async def test_stream_path_fires_the_same_hook_hooks():
     log = []
 
-    class Hooks(SpyMiddleware):
+    class Hooks(SpyHook):
         async def before_tool(self, name, args, state):
             log.append("before_tool")
             return True, None

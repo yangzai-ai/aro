@@ -76,7 +76,7 @@ async def test_disconnect_cancels_wait_and_releases_session(service):
         session = app.state.sessions.sessions[identity]
         assert session.busy and session.approvals.pending
     assert not session.busy and not session.approvals.pending
-    assert session.task.done() and session.engine.trace_middleware.current_trace is None
+    assert session.task.done() and session.engine.trace_hook.current_trace is None
     repo = next(c.repository for c in session.engine.capabilities if c.name == "helpdesk_tools")
     assert repo.tickets[0].status == "open"
 

@@ -2,7 +2,7 @@
 
 验证三个核心契约接口：
 - BaseTool
-- Middleware
+- Hook
 - Capability
 """
 
@@ -10,7 +10,7 @@ import pytest
 from langchain_core.messages import HumanMessage
 
 from core.kernel.capability import Capability
-from core.kernel.middleware import Middleware
+from core.kernel.hook import Hook
 from core.kernel.state import AgentState
 from core.tools.base import BaseTool, ToolResult
 
@@ -42,8 +42,8 @@ class MockTool(BaseTool):
         return ToolResult(success=True, output="mock_result")
 
 
-class MockMiddleware(Middleware):
-    """Mock middleware for testing."""
+class MockHook(Hook):
+    """Mock hook for testing."""
 
     def __init__(self) -> None:
         self.before_called = False
@@ -68,8 +68,8 @@ class MockCapability(Capability):
     def tools(self) -> list[BaseTool]:
         return [MockTool()]
 
-    def middlewares(self) -> list[Middleware]:
-        return [MockMiddleware()]
+    def hooks(self) -> list[Hook]:
+        return [MockHook()]
 
 
 class TestBaseTool:
@@ -95,22 +95,22 @@ class TestBaseTool:
         assert tool.schema == {}
 
 
-class TestMiddleware:
-    """测试 Middleware 契约."""
+class TestHook:
+    """测试 Hook 契约."""
 
     @pytest.mark.asyncio
-    async def test_middleware_hooks(self) -> None:
-        """测试中间件钩子."""
-        middleware = MockMiddleware()
+    async def test_hook_hooks(self) -> None:
+        """测试Hook钩子."""
+        hook = MockHook()
         state = AgentState(messages=[HumanMessage(content="test")])
 
         # Before hook
-        state = await middleware.before(state)
-        assert middleware.before_called is True
+        state = await hook.before(state)
+        assert hook.before_called is True
 
         # After hook
-        state = await middleware.after(state)
-        assert middleware.after_called is True
+        state = await hook.after(state)
+        assert hook.after_called is True
 
 
 class TestCapability:
@@ -124,10 +124,10 @@ class TestCapability:
         assert len(tools) == 1
         assert tools[0].name == "mock_tool"
 
-    def test_capability_middlewares(self) -> None:
-        """测试能力提供的中间件."""
+    def test_capability_hooks(self) -> None:
+        """测试能力提供的Hook."""
         capability = MockCapability()
-        middlewares = capability.middlewares()
+        hooks = capability.hooks()
 
-        assert len(middlewares) == 1
-        assert isinstance(middlewares[0], MockMiddleware)
+        assert len(hooks) == 1
+        assert isinstance(hooks[0], MockHook)

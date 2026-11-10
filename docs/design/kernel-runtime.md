@@ -29,7 +29,7 @@ Engine 只调用一次图驱动，不再用 for 调用 run_once。run_once 使�
 
 工具节点逐项执行：写入 tool_call_id → tool_call 事件 → before_tool 正序 → 权限判断/执行 → 追加 ToolMessage → after_tool 正序 → tool_result 事件。轮级 after 在工具批次结束后逆序调用。
 
-因此两个中间件 a、b 的顺序保持为：
+因此两个Hook a、b 的顺序保持为：
 
 ```text
 a.before → b.before
@@ -38,7 +38,7 @@ a.after_tool → b.after_tool
 b.after → a.after
 ```
 
-before_tool 首个 `(False, reason)` 中止后续 before_tool，拒绝执行工具并回写失败 ToolMessage；after_tool 仍按原顺序调用。授权异常继续转换成失败结果。没有处理 write 的中间件时，write 仍拒绝；forbidden 不进模型工具表也不可执行。bind_tools 仍只在装配时调用。
+before_tool 首个 `(False, reason)` 中止后续 before_tool，拒绝执行工具并回写失败 ToolMessage；after_tool 仍按原顺序调用。授权异常继续转换成失败结果。没有处理 write 的Hook时，write 仍拒绝；forbidden 不进模型工具表也不可执行。bind_tools 仍只在装配时调用。
 
 HITL 保持方案 A：before_tool 中等待 ApprovalManager 的 Future，审批 API 回调完成 Future，取消时沿原清理链回收。图不使用 interrupt、ToolNode 或工具自动重试。
 
@@ -46,14 +46,14 @@ HITL 保持方案 A：before_tool 中等待 ApprovalManager 的 Future，审批 
 
 进入工具节点时先对整批调用深拷贝，阻止第一个钩子改写后续调用。`before_tool` 每次接收独立参数副本，工具执行也接收副本。事件 sink 接收参数/结果副本。`after_tool` 每次接收独立参数、结果和消息视图；内核保留真实 ToolMessage 和历史消息对象，忽略观察者的消息改写，仍允许 context 与外部存储写入。
 
-`after_tool` 普通异常不会中断后续钩子、tool_result 或同批调用，诊断记录在调用的 `middleware_errors`（middleware/hook/error_type）；不记录原始异常文本。Trace 的既有四个钩子实现保留，由内核在完整观察链结束后补全权威结果、耗时与诊断，Trace 钩子自身失败也有记录兜底。`CancelledError` 继续传播；轮级 before/after 和事件 sink 的异常策略不变。
+`after_tool` 普通异常不会中断后续钩子、tool_result 或同批调用，诊断记录在调用的 `hook_errors`（hook_class/hook/error_type）；不记录原始异常文本。Trace 的既有四个钩子实现保留，由内核在完整观察链结束后补全权威结果、耗时与诊断，Trace 钩子自身失败也有记录兜底。`CancelledError` 继续传播；轮级 before/after 和事件 sink 的异常策略不变。
 
 `BaseTool.timeout_seconds: float | None = None` 由内核的 `asyncio.timeout` 包住 `tool.run()`，不包含授权等待或观察钩子，无自动重试。超时生成失败 ToolResult 后继续处理同批调用。阻塞事件循环或主动吞取消的工具不受可靠硬截止保证，外部写入也不会自动回滚。
 
 Trace 工具记录和 SSE tool_result 统一包含：
 
 - `duration_ms`：本次调用总耗时，包含授权和观察链。
-- `approval_duration_ms`：仅当 write 调用实际到达通用 `_handles_write` 授权中间件时记录整个 before_tool 阶段，包含同阶段其他钩子的开销；通过、拒绝、授权异常均记录。没有走审批则为 `None`，不是 0。
+- `approval_duration_ms`：仅当 write 调用实际到达通用 `_handles_write` 授权Hook时记录整个 before_tool 阶段，包含同阶段其他钩子的开销；通过、拒绝、授权异常均记录。没有走审批则为 `None`，不是 0。
 - `execution_duration_ms`：仅工具 run 的执行耗时（包含超时取消收尾）；拒绝、未知工具、无授权处理器而被拦截的 write 为 0。
 
 前端执行记录保留总耗时，并分别展示授权与执行耗时。未完成的 tool_call 没有完成耗时字段，兼容旧历史记录。
@@ -64,7 +64,7 @@ Trace 工具记录和 SSE tool_result 统一包含：
 
 每次运行在 event_scope 内复制一个独立 Context。三个节点的实际异步执行体通过 `asyncio.create_task(..., context=context)` 依次在同一个 Context 中执行，保证 before 写入的身份可被 tools 和 after 读取，事件 sink 也保持可见。不同运行互不共享这个 Context，调用者 Context 不被反向写入。节点直接 await 自己的执行任务，取消传播并等待任务结束，不创建游离工具或审批任务。
 
-`KernelRun` 只保存最新 AgentState 引用，不进入图状态。中间件返回新状态后立即更新该引用；图在下一钩子或模型处失败时，Engine 仍能用最新状态结束 Trace。Trace.start/finish 继续由 Engine 对整个用户请求负责，一次请求只生成一份顶层 Trace。
+`KernelRun` 只保存最新 AgentState 引用，不进入图状态。Hook返回新状态后立即更新该引用；图在下一钩子或模型处失败时，Engine 仍能用最新状态结束 Trace。Trace.start/finish 继续由 Engine 对整个用户请求负责，一次请求只生成一份顶层 Trace。
 
 context 的公开字典注解及 RuntimeContext 内部访问入口维持 debt1 的已批准方案，不调整身份校验或未知键。
 

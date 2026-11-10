@@ -2,7 +2,7 @@
 
 总控由原有 AgentEngine 运行：LLM 看 Registry 的名称和描述，通过 `delegate_agent` 选择一个
 专项 Agent，专项返回结果后总控整合回答。派发使用 LangGraph StateGraph，专项执行仍使用
-同一套 Engine/KernelLoop/Tool/Middleware，core 未增加多 Agent 分支或接口。
+同一套 Engine/KernelLoop/Tool/Hook，core 未增加多 Agent 分支或接口。
 
 ## 何时使用
 
@@ -33,10 +33,10 @@ LocalAgentHandle 从宿主提供的异步资源作用域取得 Engine，用独�
 
 ## 能力装配与配置
 
-multiagent 是工具 + 绑定中间件的混合 Capability，不需要新的内核扩展点。
+multiagent 是工具 + 绑定Hook的混合 Capability，不需要新的内核扩展点。
 工具的 description 包含动态 Registry 清单，agent_name schema 的 enum 对应登记名称；
 LLM 根据这些描述做选择，图中无领域关键词 if-else。
-中间件绑定可信身份，并在一个完整用户轮次内限制一次委派，工具子轮不会重置预算。
+Hook绑定可信身份，并在一个完整用户轮次内限制一次委派，工具子轮不会重置预算。
 LangGraph 节点仅负责按模型已选择的名称派发，不额外创建第二套路由模型或执行内核。
 
 ```yaml
@@ -77,7 +77,7 @@ call_id 加调用级 UUID 前缀避免不同模型重复 ID，tool_name 显示�
 另有 agent_start、agent_done、agent_failed、agent_token 事件。
 子文本使用 agent_token，不混入总控最终回复的 token，避免页面出现两份回答。
 前端当前忽略专属 agent_* 事件，只显示专项工具步骤和总控文本；完整子 Trace 可在最终结果展开。
-没有复用同一个 TraceMiddleware；每个父/子 Engine 独立，转发恢复父事件作用域，嵌套事件不会递归。
+没有复用同一个 TraceHook；每个父/子 Engine 独立，转发恢复父事件作用域，嵌套事件不会递归。
 
 ## 超时、取消和权限边界
 

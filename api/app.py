@@ -76,7 +76,7 @@ async def stream_turn(request: Request, session: Session, message: str) -> Async
                 )
             )
         else:
-            trace = session.engine.trace_middleware.get_latest_trace()
+            trace = session.engine.trace_hook.get_latest_trace()
             await publish(
                 ExecutionEvent(
                     "done", {"session_id": session.id, "trace": trace.to_dict() if trace else None}
@@ -84,7 +84,7 @@ async def stream_turn(request: Request, session: Session, message: str) -> Async
             )
         finally:
             # Avoid retaining all past traces in a long-lived browser session.
-            session.engine.trace_middleware.traces[:] = session.engine.trace_middleware.traces[-1:]
+            session.engine.trace_hook.traces[:] = session.engine.trace_hook.traces[-1:]
 
     async def run_and_signal() -> None:
         try:

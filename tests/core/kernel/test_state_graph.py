@@ -13,7 +13,7 @@ from core.kernel.loop import KernelLoop, KernelRun
 from core.kernel.state import AgentState
 from core.llm.provider import LLMResponse
 from core.tools.base import ToolResult
-from tests.test_kernel_loop import FakeLLMProvider, FakeTool, SpyMiddleware
+from tests.test_kernel_loop import FakeLLMProvider, FakeTool, SpyHook
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ async def test_last_allowed_tool_batch_executes_before_original_limit_error(budg
             return ToolResult(True, self.calls)
 
     tool = CountingTool()
-    hooks = SpyMiddleware("count")
+    hooks = SpyHook("count")
     loop = KernelLoop(
         FakeLLMProvider("", [{"id": "repeated", "name": tool.name, "args": {}}]),
         [tool],
@@ -60,7 +60,7 @@ async def test_final_answer_in_last_slot_and_complete_history_are_preserved(engi
     original_ai = AIMessage(content="same content")
     temporary = SystemMessage(content="remove this")
 
-    class Replace(SpyMiddleware):
+    class Replace(SpyHook):
         async def before(self, state):
             return AgentState(
                 messages=[m for m in state["messages"] if m is not temporary],
@@ -82,7 +82,7 @@ async def test_final_answer_in_last_slot_and_complete_history_are_preserved(engi
             )
 
     provider = TwoRounds("")
-    engine.loop = KernelLoop(provider, [FakeTool()], [engine.trace_middleware, Replace("replace")])
+    engine.loop = KernelLoop(provider, [FakeTool()], [engine.trace_hook, Replace("replace")])
     state = AgentState(
         messages=[temporary, original_human, original_ai], context={"thread_id": "known"}
     )
@@ -94,29 +94,29 @@ async def test_final_answer_in_last_slot_and_complete_history_are_preserved(engi
     assert not any(m is temporary for m in result["messages"])
     assert all(provider.seen[0][i] is provider.seen[1][i] for i in range(3))
     assert set(result) == {"messages", "context"}
-    assert len(engine.trace_middleware.traces) == 1
-    assert engine.trace_middleware.get_latest_trace().agent_response == "final"
+    assert len(engine.trace_hook.traces) == 1
+    assert engine.trace_hook.get_latest_trace().agent_response == "final"
 
 
 async def test_trace_finishes_latest_replaced_state_when_next_hook_raises(engine):
-    class Replace(SpyMiddleware):
+    class Replace(SpyHook):
         async def before(self, state):
             return AgentState(
                 messages=[*state["messages"], AIMessage(content="observed before failure")],
                 context=dict(state["context"]),
             )
 
-    class Fail(SpyMiddleware):
+    class Fail(SpyHook):
         async def before(self, state):
             raise ValueError("before failed")
 
     engine.loop = KernelLoop(FakeLLMProvider("unreachable"), [], [Replace("replace"), Fail("fail")])
     with pytest.raises(ValueError, match="before failed"):
         await engine.run("request")
-    trace = engine.trace_middleware.get_latest_trace()
+    trace = engine.trace_hook.get_latest_trace()
     assert trace.error == "ValueError" and trace.agent_response == "observed before failure"
     assert (
-        len(engine.trace_middleware.traces) == 1 and engine.trace_middleware.current_trace is None
+        len(engine.trace_hook.traces) == 1 and engine.trace_hook.current_trace is None
     )
 
 
@@ -124,7 +124,7 @@ async def test_node_context_writes_cross_nodes_but_not_concurrent_runs_or_caller
     scope = ContextVar("graph_test_identity", default="caller")
     observations = []
 
-    class Identity(SpyMiddleware):
+    class Identity(SpyHook):
         async def before(self, state):
             scope.set(state["context"]["user_id"])
             return state
@@ -165,7 +165,7 @@ async def test_cancelled_graph_drains_pending_before_tool_without_executing():
     pending = asyncio.get_running_loop().create_future()
     entered, released = asyncio.Event(), asyncio.Event()
 
-    class Guard(SpyMiddleware):
+    class Guard(SpyHook):
         async def before_tool(self, name, args, state):
             entered.set()
             try:

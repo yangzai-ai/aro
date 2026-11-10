@@ -1,15 +1,15 @@
-"""Tool-level HITL middleware."""
+"""Tool-level HITL hook."""
 
 from typing import Any
 
-from core.kernel.middleware import Middleware
+from core.kernel.hook import Hook
 from core.kernel.state import AgentState
 from core.tools.base import BaseTool, ToolResult
 
 from .approval_manager import ApprovalManager
 
 
-class HITLMiddleware(Middleware):
+class HITLHook(Hook):
     """Pause write tools until a human approves their exact arguments."""
 
     _handles_write = True

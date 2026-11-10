@@ -85,7 +85,7 @@ async def test_checkpointed_conversations_match_unsaved_graph_byte_for_byte(tmp_
 
     async def conversation():
         engine = AgentEngine(*config(tmp_path))
-        engine.loop = KernelLoop(Provider(""), [FakeTool()], [engine.trace_middleware])
+        engine.loop = KernelLoop(Provider(""), [FakeTool()], [engine.trace_hook])
         try:
             state = AgentState(messages=[], context={"thread_id": "same-thread", "custom": "kept"})
             outputs = []
@@ -133,7 +133,7 @@ async def test_explicit_input_replaces_pending_calls_history_and_rounds(tmp_path
     engine.loop = KernelLoop(
         FakeLLMProvider("", [{"id": "old", "name": "fake_tool", "args": {}}]),
         [tool],
-        [engine.trace_middleware],
+        [engine.trace_hook],
     )
     old = AgentState(messages=[], context={"thread_id": "same", "old_only": True})
     try:

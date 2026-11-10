@@ -9,7 +9,7 @@
 | # | 主题 | 决定 | 放弃的方案 |
 | --- | --- | --- | --- |
 | D1 | 会话模式 | 保持托管模式：ARO 持有完整运行状态 | 彻底无状态（业务后端带快照） |
-| D2 | 扩展模型完整化 | Hook 覆盖完整生命周期（会话恢复 → 轮级钩子 → 关闭），Capability 作标准能力打包器，Trace/持久化/HITL 无特例 | 拆成 Middleware + LifecycleHook 两套；宿主级基础设施单独一套机制 |
+| D2 | 扩展模型完整化 | Hook 覆盖完整生命周期（会话恢复 → 轮级钩子 → 关闭），Capability 作标准能力打包器，Trace/持久化/HITL 无特例 | 拆成 Hook + LifecycleHook 两套；宿主级基础设施单独一套机制 |
 | D3 | 审批跨重启 | 暂保留 Future 挂起，重启即本轮中断 | 现在改用 LangGraph interrupt |
 | D4 | 工具执行管线 | 最小加固：钩子不变，收紧语义 | 照搬五段式管线 |
 | D5 | MCP | MCP client 能力插件 + ARO MCP 网关 | 每个外部系统手写工具 |
@@ -35,9 +35,9 @@
 
 ### 重要澄清
 
-在讨论"是否把持久化做成插件"时发现设计逐渐复杂化，引入了"宿主级基础设施"概念，并准备为会话存储和 Trace 导出单独建立扩展组（`aro.session_stores`、`aro.trace_sinks`）。这偏离了最初的**一个内核、两个扩展点（BaseTool + Middleware）**设计哲学。
+在讨论"是否把持久化做成插件"时发现设计逐渐复杂化，引入了"宿主级基础设施"概念，并准备为会话存储和 Trace 导出单独建立扩展组（`aro.session_stores`、`aro.trace_sinks`）。这偏离了最初的**一个内核、两个扩展点（BaseTool + Hook）**设计哲学。
 
-用户提出核心问题：Trace、会话存储能不能都基于这两个扩展点实现？审查后发现可以，但需要完整化扩展点 2（Middleware → Hook）。
+用户提出核心问题：Trace、会话存储能不能都基于这两个扩展点实现？审查后发现可以，但需要完整化扩展点 2（Hook → Hook）。
 
 ### 决定：Hook 覆盖完整生命周期
 
@@ -62,16 +62,16 @@ class Hook(Protocol):
         """轮开始前：会话恢复。第一个返回非 None 的 state 即用，其余跳过。"""
     
     async def before(self, state: AgentState) -> AgentState:
-        """每轮开始（现有 Middleware.before）"""
+        """每轮开始（现有 Hook.before）"""
     
     async def before_tool(self, tool_name, tool_args, state) -> tuple[bool, str | None]:
-        """工具执行前（现有 Middleware.before_tool）"""
+        """工具执行前（现有 Hook.before_tool）"""
     
     async def after_tool(self, tool_name, tool_args, tool_result, state) -> AgentState:
-        """工具执行后（现有 Middleware.after_tool）"""
+        """工具执行后（现有 Hook.after_tool）"""
     
     async def after(self, state: AgentState) -> AgentState:
-        """每轮结束：写盘、Trace 导出（现有 Middleware.after）"""
+        """每轮结束：写盘、Trace 导出（现有 Hook.after）"""
     
     async def on_session_close(self, session_id: str) -> None:
         """会话关闭：删除存储。"""
@@ -80,7 +80,7 @@ class Hook(Protocol):
         """引擎停止时：连接释放。"""
 ```
 
-现有 Middleware 完全兼容，就是只用了中间四个阶段（before/before_tool/after_tool/after）的 Hook。
+现有 Hook 完全兼容，就是只用了中间四个阶段（before/before_tool/after_tool/after）的 Hook。
 
 **各能力的实现**：
 
@@ -97,7 +97,7 @@ class Hook(Protocol):
 
 ### 放弃的方案
 
-1. **拆成 Middleware + LifecycleHook 两套**：会引入概念分裂，用户不清楚什么时候该用哪个。
+1. **拆成 Hook + LifecycleHook 两套**：会引入概念分裂，用户不清楚什么时候该用哪个。
 2. **宿主级基础设施单独一套机制**：为会话存储、Trace 导出单独建 `aro.session_stores`、`aro.trace_sinks` 扩展组。这会让架构变成"标准能力用 Capability，基础设施用另一套"，失去一致性。
 
 ### 技术细节：on_session_load 签名不同
@@ -129,27 +129,27 @@ for hook in hooks:
 
 暂不改用 interrupt 的原因：
 - interrupt 恢复时会重跑整个节点，同一批里已执行的写操作会重复执行。要避免，必须把工具改成逐个执行，并且做到幂等。
-- 中间件放在 ContextVar 里的身份、委派预算，恢复后会丢失，需要重新设计传递方式。
+- Hook放在 ContextVar 里的身份、委派预算，恢复后会丢失，需要重新设计传递方式。
 - 恢复走新的 HTTP 请求，SSE 流也要重新接上。
 
 **触发条件**：出现以下任一需求时再做：等几小时甚至几天的长时审批；多实例部署下审批落到其他实例，且粘性路由或转发无法满足。D2 的逐工具落盘可以直接作为它的基础。
 
 ## D4 工具执行管线：最小加固
 
-核实到的现状：四个中间件（Trace、HITL、Memory、Delegation）都不改参数、不改结果，**没有现存漏洞**。但契约里没有任何禁止，存在以下缺口：
+核实到的现状：四个Hook（Trace、HITL、Memory、Delegation）都不改参数、不改结果，**没有现存漏洞**。但契约里没有任何禁止，存在以下缺口：
 
-- 所有 before_tool 共用同一个可变 `tool_args`，执行时用的是这个活对象。审批只给人看副本，执行前不比对。排在 HITL 后面的中间件可以在批准后改参数。
-- 中间件顺序由 yml 书写顺序决定，只有 Trace 被强制排在首位。安全性依赖配置作者怎么写。
-- after_tool 抛异常没有兜底：工具已经执行，后续中间件、tool_result 事件和同批剩余调用全部跳过。
+- 所有 before_tool 共用同一个可变 `tool_args`，执行时用的是这个活对象。审批只给人看副本，执行前不比对。排在 HITL 后面的Hook可以在批准后改参数。
+- Hook顺序由 yml 书写顺序决定，只有 Trace 被强制排在首位。安全性依赖配置作者怎么写。
+- after_tool 抛异常没有兜底：工具已经执行，后续Hook、tool_result 事件和同批剩余调用全部跳过。
 - ToolResult 可变：Trace、ToolMessage、前端事件三处看到的结果可能不一致。
 - 内核没有统一超时，各工具自行处理。
 
 决定：两个钩子和函数签名不变，由内核强制执行以下语义：
-1. before_tool 只能放行或拒绝。内核冻结一份参数，给每个中间件传副本，执行时用内核自己那份。这样中间件顺序不再影响安全。
-2. after_tool 只读：参数和结果都传副本或只读对象；每个中间件的异常单独隔离，记进 Trace，后续流程照常进行。
+1. before_tool 只能放行或拒绝。内核冻结一份参数，给每个Hook传副本，执行时用内核自己那份。这样Hook顺序不再影响安全。
+2. after_tool 只读：参数和结果都传副本或只读对象；每个Hook的异常单独隔离，记进 Trace，后续流程照常进行。
 3. BaseTool 增加可选超时，由内核计时，只计执行时间，不含审批等待。**不做通用重试**，因为写操作大多不能安全重放。
 4. Trace 把"等待授权"和"执行"分开计时。
-5. 写进 CONVENTIONS 作为硬约束，并配"恶意中间件"测试：中间件篡改参数和结果，断言实际执行的仍是原参数，审计记录的仍是真实结果。
+5. 写进 CONVENTIONS 作为硬约束，并配"恶意Hook"测试：Hook篡改参数和结果，断言实际执行的仍是原参数，审计记录的仍是真实结果。
 
 不照搬五段式的原因：目前没有改参数、改结果的真实需求；契约越小，插件生态越稳。以后确有需要（比如结果脱敏），再新增显式的改写钩子，这是纯增量改动。**必须在插件生态开放之前完成**：先收紧契约不会破坏兼容，等第三方插件依赖了"可以改参数"再收紧，就会破坏兼容。
 
@@ -169,7 +169,7 @@ for hook in hooks:
 参考 deepseek-harness（下称 dsh）。值得学的有：分发单元是"包 + 配置补丁"，profile 有序叠层，包元数据声明兼容的框架版本，用静态 JSON 文件做插件索引，配置错误在加载期就暴露。
 
 和 dsh 的刻意区别：
-- **内核不可替换**。dsh 连 agent 循环都可以换；ARO 的循环、审批拦截、写操作强制走 HITL 是企业安全底线，插件只能通过 BaseTool 和 Middleware 接入。
+- **内核不可替换**。dsh 连 agent 循环都可以换；ARO 的循环、审批拦截、写操作强制走 HITL 是企业安全底线，插件只能通过 BaseTool 和 Hook 接入。
 - **先可信，再丰富**。dsh 插件运行在宿主进程里，没有权限声明，也没有签名。ARO 的插件必须回答三个问题：它能做什么、碰哪些系统、谁批准安装的。
 
 形态：

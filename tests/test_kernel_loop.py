@@ -1,16 +1,16 @@
 """Test suite for kernel loop (v0.1).
 
 测试内核循环的核心逻辑：
-- 裸 Agent（无工具、无中间件）
+- 裸 Agent（无工具、无Hook）
 - 工具调用
-- 中间件执行顺序
+- Hook执行顺序
 """
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
+from core.kernel.hook import Hook
 from core.kernel.loop import KernelLoop
-from core.kernel.middleware import Middleware
 from core.kernel.state import AgentState
 from core.llm.provider import LLMProvider, LLMResponse
 from core.tools.base import BaseTool, ToolResult
@@ -60,8 +60,8 @@ class FakeTool(BaseTool):
         return ToolResult(success=True, output="fake_result")
 
 
-class SpyMiddleware(Middleware):
-    """Middleware that records execution order."""
+class SpyHook(Hook):
+    """Hook that records execution order."""
 
     def __init__(self, name: str) -> None:
         self.name = name
@@ -81,9 +81,9 @@ class TestKernelLoop:
 
     @pytest.mark.asyncio
     async def test_bare_agent(self) -> None:
-        """测试裸 Agent（无工具、无中间件）."""
+        """测试裸 Agent（无工具、无Hook）."""
         llm = FakeLLMProvider(response="Hello!")
-        loop = KernelLoop(llm=llm, tools=[], middlewares=[])
+        loop = KernelLoop(llm=llm, tools=[], hooks=[])
 
         state = AgentState(messages=[HumanMessage(content="Hi")])
         result = await loop.run_once(state)
@@ -107,7 +107,7 @@ class TestKernelLoop:
         llm = FakeLLMProvider(response="I'll use the tool", tool_calls=tool_calls)
 
         tool = FakeTool()
-        loop = KernelLoop(llm=llm, tools=[tool], middlewares=[])
+        loop = KernelLoop(llm=llm, tools=[tool], hooks=[])
 
         state = AgentState(messages=[HumanMessage(content="Use the tool")])
         result = await loop.run_once(state)
@@ -118,15 +118,15 @@ class TestKernelLoop:
         assert result["messages"][2].content == "fake_result"
 
     @pytest.mark.asyncio
-    async def test_middleware_execution_order(self) -> None:
-        """测试中间件执行顺序（before 正序，after 逆序）."""
+    async def test_hook_execution_order(self) -> None:
+        """测试Hook执行顺序（before 正序，after 逆序）."""
         llm = FakeLLMProvider(response="OK")
 
         # 使用共享的日志列表来记录执行顺序
         execution_log: list[str] = []
 
-        class OrderSpyMiddleware(Middleware):
-            """Middleware that records execution order to shared log."""
+        class OrderSpyHook(Hook):
+            """Hook that records execution order to shared log."""
 
             def __init__(self, name: str, log: list[str]) -> None:
                 self.name = name
@@ -140,10 +140,10 @@ class TestKernelLoop:
                 self.log.append(f"{self.name}_after")
                 return state
 
-        mw1 = OrderSpyMiddleware("mw1", execution_log)
-        mw2 = OrderSpyMiddleware("mw2", execution_log)
+        mw1 = OrderSpyHook("mw1", execution_log)
+        mw2 = OrderSpyHook("mw2", execution_log)
 
-        loop = KernelLoop(llm=llm, tools=[], middlewares=[mw1, mw2])
+        loop = KernelLoop(llm=llm, tools=[], hooks=[mw1, mw2])
 
         state = AgentState(messages=[HumanMessage(content="Test")])
         await loop.run_once(state)
@@ -176,7 +176,7 @@ class TestKernelLoop:
         loop = KernelLoop(
             llm=llm,
             tools=[read_tool, forbidden_tool],
-            middlewares=[],
+            hooks=[],
         )
 
         # 验证：只有 read_tool 在可用列表中

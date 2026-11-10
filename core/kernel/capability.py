@@ -1,13 +1,13 @@
 """Capability contract.
 
 Capability 是能力的统一封装（打包器）。
-它不是第三个扩展点——真正的扩展点只有两个：工具 + 中间件。
-Capability 的作用是把相关的工具和中间件打包成一个"能力"，方便配置和初始化。
+它不是第三个扩展点——真正的扩展点只有两个：工具 + Hook。
+Capability 的作用是把相关的工具和Hook打包成一个"能力"，方便配置和初始化。
 
 例如：
 - 知识库 Capability: 提供 search_knowledge 工具
-- 记忆 Capability: 提供 search_memory 工具 + 记忆读写中间件
-- HITL Capability: 提供审批中间件
+- 记忆 Capability: 提供 search_memory 工具 + 记忆读写Hook
+- HITL Capability: 提供审批Hook
 
 能力是可插拔的：
 - 配置中列出 capabilities: [memory, knowledge]
@@ -18,19 +18,19 @@ Capability 的作用是把相关的工具和中间件打包成一个"能力"，�
 from abc import ABC, abstractmethod
 from typing import Any
 
-from core.kernel.middleware import Middleware
+from core.kernel.hook import Hook
 from core.tools.base import BaseTool
 
 
 class Capability(ABC):
     """能力基类（契约）.
 
-    Capability 是"打包器"，把相关的工具和中间件组织成一个可配置的单元。
+    Capability 是"打包器"，把相关的工具和Hook组织成一个可配置的单元。
 
     设计要点：
     - 一个 Capability 可以只提供工具（如知识库）
-    - 一个 Capability 可以只提供中间件（如 HITL）
-    - 一个 Capability 可以同时提供工具和中间件（如记忆）
+    - 一个 Capability 可以只提供Hook（如 HITL）
+    - 一个 Capability 可以同时提供工具和Hook（如记忆）
     - 未启用的 Capability，其代码完全不加载
 
     Example:
@@ -46,8 +46,8 @@ class Capability(ABC):
             def tools(self) -> list[BaseTool]:
                 return [SearchKnowledgeTool(self.vector_store)]
 
-            def middlewares(self) -> list[Middleware]:
-                return []  # 知识库不需要中间件
+            def hooks(self) -> list[Hook]:
+                return []  # 知识库不需要Hook
     """
 
     @property
@@ -66,11 +66,11 @@ class Capability(ABC):
         ...
 
     @abstractmethod
-    def middlewares(self) -> list[Middleware]:
-        """此能力提供的中间件列表.
+    def hooks(self) -> list[Hook]:
+        """此能力提供的Hook列表.
 
         Returns:
-            list[Middleware]: 中间件列表（可以为空）
+            list[Hook]: Hook列表（可以为空）
         """
         ...
 

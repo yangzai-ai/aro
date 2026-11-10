@@ -1,4 +1,4 @@
-"""Read-only model-selected retrieval, scoped by middleware runtime context."""
+"""Read-only model-selected retrieval, scoped by hook runtime context."""
 
 import asyncio
 import logging

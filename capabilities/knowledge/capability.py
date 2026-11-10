@@ -17,8 +17,8 @@ from capabilities.knowledge.retrieval import HybridRetriever
 from capabilities.knowledge.tool import SearchKnowledgeTool
 from capabilities.knowledge.vectordb.qdrant import QdrantVectorDB
 from core.kernel.capability import Capability
+from core.kernel.hook import Hook
 from core.kernel.lifecycle import wait_for_cleanup
-from core.kernel.middleware import Middleware
 from core.tools.base import BaseTool, ToolResult
 
 
@@ -190,8 +190,8 @@ class KnowledgeCapability(Capability):
             raise RuntimeError("Knowledge requires await AgentEngine.create(...) before tools()")
         return [self.search_tool]
 
-    def middlewares(self) -> list[Middleware]:
-        """RAG is model-selected, not forced middleware."""
+    def hooks(self) -> list[Hook]:
+        """RAG is model-selected, not forced hook."""
         return []
 
 

@@ -8,7 +8,7 @@ export interface ToolStep {
   duration_ms?: number;
   approval_duration_ms?: number | null;
   execution_duration_ms?: number;
-  middleware_errors?: { middleware: string; hook: string; error_type: string }[];
+  hook_errors?: { hook_class: string; hook: string; error_type: string }[];
 }
 
 export interface AgentTrace {

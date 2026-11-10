@@ -42,7 +42,7 @@ class LifecycleCapability(Capability):
         self.log.append("tools:" + self.name)
         return []
 
-    def middlewares(self):
+    def hooks(self):
         return []
 
 

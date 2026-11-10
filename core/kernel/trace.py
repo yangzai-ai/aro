@@ -1,4 +1,4 @@
-"""Execution trace models and middleware for the agent kernel."""
+"""Execution trace models and hook for the agent kernel."""
 
 import time
 import uuid
@@ -8,7 +8,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from core.kernel.middleware import Middleware
+from core.kernel.hook import Hook
 from core.kernel.state import AgentState, runtime_context
 from core.tools.base import ToolResult
 
@@ -28,7 +28,7 @@ class ToolCall:
     call_id: str = ""
     approval_duration_ms: float | None = None
     execution_duration_ms: float = 0.0
-    middleware_errors: list[dict[str, str]] = field(default_factory=list)
+    hook_errors: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -57,7 +57,7 @@ class AgentTrace:
         return data
 
 
-class TraceMiddleware(Middleware):
+class TraceHook(Hook):
     """Collect one trace for each sequential kernel turn."""
 
     def __init__(self) -> None:
@@ -157,7 +157,7 @@ class TraceMiddleware(Middleware):
         duration_ms: float,
         approval_duration_ms: float | None,
         execution_duration_ms: float,
-        middleware_errors: list[dict[str, str]],
+        hook_errors: list[dict[str, str]],
     ) -> None:
         """Kernel finalization after all observers, including failing observers.
 
@@ -177,7 +177,7 @@ class TraceMiddleware(Middleware):
         call.call_id = call_id
         call.approval_duration_ms = approval_duration_ms
         call.execution_duration_ms = execution_duration_ms
-        call.middleware_errors = deepcopy(middleware_errors)
+        call.hook_errors = deepcopy(hook_errors)
         if len(calls) > offset:
             calls[offset] = call
         else:

@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage
 from capabilities.memory.identity import memory_namespace
 from core.kernel.loop import KernelLoop
 from core.kernel.state import AgentState, RuntimeContext, runtime_context
-from core.kernel.trace import TraceMiddleware
+from core.kernel.trace import TraceHook
 from tests.test_kernel_loop import FakeLLMProvider, FakeTool
 
 
@@ -78,7 +78,7 @@ async def test_loop_and_trace_write_through_the_original_mapping():
     marker = {"unchanged": True}
     legacy: dict[str, Any] = {"thread_id": "thread", "unknown": marker}
     state = AgentState(messages=[HumanMessage(content="hello")], context=legacy)
-    trace = TraceMiddleware()
+    trace = TraceHook()
     loop = KernelLoop(
         FakeLLMProvider("", [{"id": "call", "name": "fake_tool", "args": {}}]),
         [FakeTool()],

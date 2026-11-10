@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from capabilities.doc_generation.public import DocumentConfig, DocumentService, RenderRequest
 from core.kernel.capability import Capability
-from core.kernel.middleware import Middleware
+from core.kernel.hook import Hook
 from core.tools.base import BaseTool, PermissionLevel, ToolResult
 
 
@@ -59,7 +59,7 @@ class DocumentCapability(Capability):
     def tools(self) -> list[BaseTool]:
         return [RenderTool(self.service)]
 
-    def middlewares(self) -> list[Middleware]:
+    def hooks(self) -> list[Hook]:
         return []
 
 

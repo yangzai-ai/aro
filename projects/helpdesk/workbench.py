@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.kernel.capability import Capability
-from core.kernel.middleware import Middleware
+from core.kernel.hook import Hook
 from core.tools.base import BaseTool, PermissionLevel, ToolResult
 from projects.helpdesk.capability import HelpdeskCapability, HelpdeskConfig, create_repository
 
@@ -165,7 +165,7 @@ class Workbench(Capability):
     def tools(self) -> list[BaseTool]:
         return list(self._tools)
 
-    def middlewares(self) -> list[Middleware]:
+    def hooks(self) -> list[Hook]:
         return []
 
     async def artifacts(self) -> list[Artifact]:

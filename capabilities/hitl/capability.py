@@ -1,15 +1,15 @@
-"""Capability assembly for human approval middleware."""
+"""Capability assembly for human approval hook."""
 
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.kernel.capability import Capability
-from core.kernel.middleware import Middleware
+from core.kernel.hook import Hook
 from core.tools.base import BaseTool
 
 from .approval_manager import ApprovalManager
-from .middleware import HITLMiddleware
+from .hook import HITLHook
 
 
 class HITLConfig(BaseModel):
@@ -21,12 +21,12 @@ class HITLConfig(BaseModel):
 
 
 class HITLCapability(Capability):
-    """Expose HITL as a middleware and no tools."""
+    """Expose HITL as a hook and no tools."""
 
     def __init__(self, config: dict[str, Any], tool_map: dict[str, BaseTool] | None = None) -> None:
         settings = HITLConfig.model_validate(config)
         self.approval_manager = ApprovalManager(settings.mode, settings.timeout_seconds)
-        self.middleware = HITLMiddleware(self.approval_manager, tool_map)
+        self.hook = HITLHook(self.approval_manager, tool_map)
 
     @property
     def name(self) -> str:
@@ -35,10 +35,10 @@ class HITLCapability(Capability):
     def tools(self) -> list[BaseTool]:
         return []
 
-    def middlewares(self) -> list[Middleware]:
-        return [self.middleware]
+    def hooks(self) -> list[Hook]:
+        return [self.hook]
 
 
 def get_capability(config: dict[str, Any]) -> Capability:
-    """Standard plugin factory; tools are bound through the middleware contract."""
+    """Standard plugin factory; tools are bound through the hook contract."""
     return HITLCapability(config)

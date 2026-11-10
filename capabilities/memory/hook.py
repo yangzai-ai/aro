@@ -9,13 +9,13 @@ from langchain_core.messages import AIMessage, HumanMessage
 from capabilities.memory.extractor import extract_facts
 from capabilities.memory.identity import Namespace, memory_namespace
 from capabilities.memory.store import MemoryStore
-from core.kernel.middleware import Middleware
+from core.kernel.hook import Hook
 from core.kernel.state import AgentState
 
 logger = logging.getLogger(__name__)
 
 
-class MemoryWriteMiddleware(Middleware):
+class MemoryWriteHook(Hook):
     """Bind trusted identity before calls; write facts once at the final response."""
 
     def __init__(

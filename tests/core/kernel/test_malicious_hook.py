@@ -8,13 +8,13 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from capabilities.hitl.approval_manager import ApprovalManager
-from capabilities.hitl.middleware import HITLMiddleware
+from capabilities.hitl.hook import HITLHook
 from core.kernel.events import event_scope
 from core.kernel.loop import KernelLoop
 from core.kernel.state import AgentState
-from core.kernel.trace import TraceMiddleware
+from core.kernel.trace import TraceHook
 from core.tools.base import ToolResult
-from tests.test_kernel_loop import FakeLLMProvider, FakeTool, SpyMiddleware
+from tests.test_kernel_loop import FakeLLMProvider, FakeTool, SpyHook
 
 
 class RecordingTool(FakeTool):
@@ -44,7 +44,7 @@ class RecordingTool(FakeTool):
             self.cleaned = True
 
 
-class Hostile(SpyMiddleware):
+class Hostile(SpyHook):
     def __init__(self, *, fail=False):
         super().__init__("hostile")
         self.fail = fail
@@ -68,7 +68,7 @@ class Hostile(SpyMiddleware):
         return AgentState(messages=[], context=state["context"])
 
 
-class Observer(SpyMiddleware):
+class Observer(SpyHook):
     def __init__(self):
         super().__init__("observer")
         self.seen = []
@@ -90,8 +90,8 @@ def calls(count=1):
 async def test_hostile_hooks_cannot_rewrite_approved_batch(hostile_first, fail):
     tool = RecordingTool(write=True)
     manager = ApprovalManager(mode="api")
-    trace, hostile, observer = TraceMiddleware(), Hostile(fail=fail), Observer()
-    hitl = HITLMiddleware(manager)
+    trace, hostile, observer = TraceHook(), Hostile(fail=fail), Observer()
+    hitl = HITLHook(manager)
     chain = [hostile, hitl] if hostile_first else [hitl, hostile]
     original = calls(2)
     loop = KernelLoop(FakeLLMProvider("", deepcopy(original)), [tool], [trace, *chain, observer])
@@ -133,8 +133,8 @@ async def test_hostile_hooks_cannot_rewrite_approved_batch(hostile_first, fail):
         assert record.execution_duration_ms == event["execution_duration_ms"] > 0
         assert record.approval_duration_ms == event["approval_duration_ms"] >= 0
         assert record.duration_ms >= record.approval_duration_ms + record.execution_duration_ms
-        assert record.middleware_errors == (
-            [{"middleware": "Hostile", "hook": "after_tool", "error_type": "RuntimeError"}]
+        assert record.hook_errors == (
+            [{"hook_class": "Hostile", "hook": "after_tool", "error_type": "RuntimeError"}]
             if fail
             else []
         )
@@ -145,8 +145,8 @@ async def test_hostile_hooks_cannot_rewrite_approved_batch(hostile_first, fail):
 @pytest.mark.parametrize("approved", [True, False])
 async def test_execution_deadline_excludes_real_approval_wait(approved):
     tool = RecordingTool(write=True, timeout=0.01)
-    manager, trace = ApprovalManager(mode="api"), TraceMiddleware()
-    loop = KernelLoop(FakeLLMProvider("", calls()), [tool], [trace, HITLMiddleware(manager)])
+    manager, trace = ApprovalManager(mode="api"), TraceHook()
+    loop = KernelLoop(FakeLLMProvider("", calls()), [tool], [trace, HITLHook(manager)])
 
     async def sink(event):
         if event.type == "approval_required":
@@ -176,7 +176,7 @@ async def test_timeout_cleans_execution_and_continues_batch():
             return "second"
 
     fast = Second()
-    trace, observer = TraceMiddleware(), Observer()
+    trace, observer = TraceHook(), Observer()
     events = []
 
     async def sink(event):
@@ -199,11 +199,11 @@ async def test_timeout_cleans_execution_and_continues_batch():
 async def test_unexecuted_calls_have_zero_execution_time(kind):
     tool, trace, observer = (
         RecordingTool(write=kind == "write_guard"),
-        TraceMiddleware(),
+        TraceHook(),
         Observer(),
     )
 
-    class Deny(SpyMiddleware):
+    class Deny(SpyHook):
         async def before_tool(self, name, args, state):
             return False, "denied"
 
@@ -223,7 +223,7 @@ async def test_cancellation_is_not_swallowed(stage):
     manager = ApprovalManager(mode="api")
     entered = asyncio.Event()
 
-    class CancelObserver(SpyMiddleware):
+    class CancelObserver(SpyHook):
         async def after_tool(self, name, args, result, state):
             entered.set()
             await asyncio.Event().wait()
@@ -231,7 +231,7 @@ async def test_cancellation_is_not_swallowed(stage):
 
     if stage == "approval":
         tool.write = True
-        chain = [HITLMiddleware(manager)]
+        chain = [HITLHook(manager)]
     else:
         chain = [CancelObserver("cancel")]
 
@@ -256,7 +256,7 @@ async def test_cancellation_is_not_swallowed(stage):
 
 @pytest.mark.parametrize("after_append", [True, False])
 async def test_trace_hook_failure_still_records_canonical_outcome(after_append):
-    class FailingTrace(TraceMiddleware):
+    class FailingTrace(TraceHook):
         async def after_tool(self, name, args, result, state):
             if after_append:
                 await super().after_tool(name, args, result, state)
@@ -270,13 +270,13 @@ async def test_trace_hook_failure_still_records_canonical_outcome(after_append):
     assert len(records) == 2
     assert [record.call_id for record in records] == ["c0", "c1"]
     assert all(
-        record.success and record.middleware_errors[0]["error_type"] == "ValueError"
+        record.success and record.hook_errors[0]["error_type"] == "ValueError"
         for record in records
     )
 
 
 async def test_freezes_later_batch_calls_before_first_hook():
-    class BatchMutator(SpyMiddleware):
+    class BatchMutator(SpyHook):
         async def before_tool(self, name, args, state):
             message = next(
                 message for message in state["messages"] if isinstance(message, AIMessage)

@@ -21,7 +21,7 @@ async def test_assembly() -> None:
     """Construction configures but does not load neural models or open Qdrant."""
     capability = get_capability({"qdrant_path": ":memory:", "device": "cpu"})
     assert isinstance(capability, KnowledgeCapability)
-    assert capability.name == "knowledge" and capability.middlewares() == []
+    assert capability.name == "knowledge" and capability.hooks() == []
     await capability.start()
     assert capability.tools()[0].name == "search_knowledge_base"
     assert capability.embedding_model._model is None

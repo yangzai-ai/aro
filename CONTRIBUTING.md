@@ -33,11 +33,11 @@ Set-Location ..
 
 依赖方向为 `projects → capabilities → core`：项目组合能力，能力只依赖公开契约；core 不反向依赖能力或项目。LangGraph 只能在 `core/kernel/` 内导入。
 
-新增通用能力：在 `capabilities/<name>/` 实现 `Capability`，按需返回 `BaseTool` 工具和 `Middleware` 中间件；需要资源初始化时实现异步 `start/close`。项目 YAML 显式启用，禁用时不得提前加载可选依赖。补充功能、安全隔离与失败清理测试。
+新增通用能力：在 `capabilities/<name>/` 实现 `Capability`，按需返回 `BaseTool` 工具和 `Hook` Hook；需要资源初始化时实现异步 `start/close`。项目 YAML 显式启用，禁用时不得提前加载可选依赖。补充功能、安全隔离与失败清理测试。
 
 新增业务项目：参考 `projects/helpdesk/` 的目录结构，新建 `projects/<name>/`，定义业务 Repository、适配器、工具及项目 Capability，在 `config/` 配置提示词、工具白名单与可选能力。保留写操作审批及业务系统最终校验，不把项目专用分支塞进内核。
 
-三个稳定扩展契约是 `BaseTool / Middleware / Capability`。涉及其签名、语义或装配边界的修改，先按工程约定第 9.7 节提案，获确认再实现。
+三个稳定扩展契约是 `BaseTool / Hook / Capability`。涉及其签名、语义或装配边界的修改，先按工程约定第 9.7 节提案，获确认再实现。
 
 ## 提交
 

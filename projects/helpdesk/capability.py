@@ -5,7 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.kernel.capability import Capability
-from core.kernel.middleware import Middleware
+from core.kernel.hook import Hook
 from core.tools.base import BaseTool
 from projects.helpdesk.repositories.base import HelpdeskRepository
 from projects.helpdesk.repositories.mock import MockRepository
@@ -57,7 +57,7 @@ class HelpdeskCapability(Capability):
         """Return the repository-backed tools."""
         return list(self._tools)
 
-    def middlewares(self) -> list[Middleware]:
+    def hooks(self) -> list[Hook]:
         """Approval policy is contributed by the separate HITL capability."""
         return []
 

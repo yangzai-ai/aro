@@ -57,7 +57,7 @@ async def test_cli_decision_to_final_trace(tmp_path, monkeypatch, answer, expect
     state = await engine.run("更新工单 TKT-001")
     repo = next(c.repository for c in engine.capabilities if c.name == "helpdesk_tools")
     assert repo.tickets[0].status == expected
-    traces = engine.trace_middleware.get_all_traces()
+    traces = engine.trace_hook.get_all_traces()
     assert len(traces) == 1
     trace = traces[0]
     assert trace.agent_response == state["messages"][-1].content
@@ -74,7 +74,7 @@ async def test_disabled_hitl_refuses_write(tmp_path, monkeypatch):
     state = await engine.run("更新工单 TKT-001")
     assert "HITL" in state["messages"][-1].content
     assert engine.capabilities[0].repository.tickets[0].status == "open"
-    assert not engine.trace_middleware.get_latest_trace().tool_calls[0].success
+    assert not engine.trace_hook.get_latest_trace().tool_calls[0].success
 
 
 def test_disabled_import_isolation():

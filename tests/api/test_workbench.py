@@ -480,8 +480,8 @@ async def test_report_denied_without_hitl_and_render_failure_no_artifact(tmp_pat
     engine.loop.llm = ReportProvider("")
     try:
         await engine.run("report")
-        assert not engine.trace_middleware.get_latest_trace().tool_calls[0].success
-        assert "HITL" in engine.trace_middleware.get_latest_trace().tool_calls[0].error
+        assert not engine.trace_hook.get_latest_trace().tool_calls[0].success
+        assert "HITL" in engine.trace_hook.get_latest_trace().tool_calls[0].error
         assert not await engine.capabilities[0].artifacts()
         service = engine.capabilities[0].documents
         with pytest.raises(ValueError):

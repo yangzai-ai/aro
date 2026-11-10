@@ -117,7 +117,7 @@ class LocalAgentHandle:
                 # Child runs inside the outer execution scope but has its own
                 # engine event_scope; forward explicitly so nested events survive.
                 state = await engine.run(task, state, stream=True, on_event=forward)
-                trace = engine.trace_middleware.get_latest_trace()
+                trace = engine.trace_hook.get_latest_trace()
                 result = AgentResult(
                     agent_name=self.name,
                     answer=str(state["messages"][-1].content),

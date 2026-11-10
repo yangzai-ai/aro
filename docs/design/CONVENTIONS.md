@@ -22,7 +22,7 @@
 | **标准能力 Capability** | 工具、知识库、记忆、HITL、多Agent、文档生成 | 可插拔，配置启用 | `capabilities/` |
 | **横切治理** | 安全、审计、成本、评测 | P2，默认关 | 未来 |
 
-两个扩展点：**工具**（能力即工具）+ **中间件链**（执行前后钩子）。可选性只针对能力层——内核、LLM Provider、状态、路由**不做成插件**（避免过度可配置）。
+两个扩展点：**工具**（能力即工具）+ **Hook链**（执行前后钩子）。可选性只针对能力层——内核、LLM Provider、状态、路由**不做成插件**（避免过度可配置）。
 
 ---
 
@@ -60,7 +60,7 @@
 - `capabilities/*` 之间**互不 import**（如 memory 不 import knowledge_tool）。需要协作时由 project 配置组合。
 - `knowledge/`、`integration/` 之间**互不 import**。
 - `projects/helpdesk/` **绝不** import `projects/finance/`。项目之间完全隔离。
-- 跨层调用只能通过 `core/` 定义的**契约接口**（Capability / BaseTool / Middleware / LLMProvider），不依赖具体实现类。
+- 跨层调用只能通过 `core/` 定义的**契约接口**（Capability / BaseTool / Hook / LLMProvider），不依赖具体实现类。
 
 > 判断某段代码放哪：问"它依赖谁"。只是循环+挂载机制 → `core/kernel`；是一种可选能力 → `capabilities/`；对接具体外部系统 → `integration`/`knowledge`；具体业务 → `projects`。
 
@@ -72,8 +72,8 @@
 
 | 接口 | 位置 | 职责 |
 |------|------|------|
-| `Capability` | `core/kernel/capability.py` | ★ 能力统一封装：声明贡献的 tools / middlewares |
-| `Middleware` | `core/kernel/middleware.py` | ★ 执行前后钩子（记忆/HITL 等能力的扩展点） |
+| `Capability` | `core/kernel/capability.py` | ★ 能力统一封装：声明贡献的 tools / hooks |
+| `Hook` | `core/kernel/hook.py` | ★ 执行前后钩子（记忆/HITL 等能力的扩展点） |
 | `BaseTool` + `@tool` | `core/tools/` | ★ 工具定义，含 `permission` 字段（能力即工具的扩展点） |
 | `AgentState` | `core/kernel/state.py` | 状态结构（TypedDict） |
 | `LLMProvider` | `core/llm/provider.py` | 统一 LLM 调用（OpenAI 兼容），屏蔽 DeepSeek/Ollama 差异 |
@@ -81,7 +81,7 @@
 | `AgentRegistry` | `capabilities/multiagent/registry.py` | Agent 统一登记与查找 |
 | `Repository` | 由各 project 定义接口，core 不预设 | 数据源抽象（mock/api 可换） |
 
-> 前三个（Capability / Middleware / BaseTool）是插件机制的地基，**v0.1 必须定稳**。
+> 前三个（Capability / Hook / BaseTool）是插件机制的地基，**v0.1 必须定稳**。
 
 v0.8 经批复增加通用生命周期：Capability 的
 `async start()` / `async close()` 默认无操作。异步装配使用
@@ -102,15 +102,15 @@ v0.8 经批复增加通用生命周期：Capability 的
 
 | 通道 | 承载什么 | 谁写 / 谁读 | 生命周期 |
 |------|----------|-------------|----------|
-| `bind_tools(tools)` | 工具表（装配期注入） | 内核装配时写；中间件读（如 HITL 判 `write`） | 装配期一次性 |
-| `state["context"]`（`RuntimeContext`） | **可序列化**请求数据：`thread_id`/`tenant_id`/`user_id` 等 | 内核/宿主写；中间件读 | 请求级，跨进程/跨轮 |
-| `ContextVar` scope | **进程内受信任身份**（从 context 派生校验后的 namespace/委派 scope） | 中间件 `before` 写、`after` 清；**工具只读** | 轮内窗口，用完归零 |
+| `bind_tools(tools)` | 工具表（装配期注入） | 内核装配时写；Hook读（如 HITL 判 `write`） | 装配期一次性 |
+| `state["context"]`（`RuntimeContext`） | **可序列化**请求数据：`thread_id`/`tenant_id`/`user_id` 等 | 内核/宿主写；Hook读 | 请求级，跨进程/跨轮 |
+| `ContextVar` scope | **进程内受信任身份**（从 context 派生校验后的 namespace/委派 scope） | Hook `before` 写、`after` 清；**工具只读** | 轮内窗口，用完归零 |
 
-**数据流是单向分层的**：`state["context"]` →（中间件 before 校验+派生）→ `ContextVar` →（工具 run 读）。
+**数据流是单向分层的**：`state["context"]` →（Hook before 校验+派生）→ `ContextVar` →（工具 run 读）。
 
 **硬约束**（破坏任一条都是 bug，不是优化空间）：
 - **身份绝不走工具可见的 state**：工具参数由 LLM 生成，身份一旦放进工具能读的位置就可被伪造。
-  身份只走 ContextVar 这条"内核/中间件写、工具只读"的受信任侧信道；工具 schema **有意不含身份字段**。
+  身份只走 ContextVar 这条"内核/Hook写、工具只读"的受信任侧信道；工具 schema **有意不含身份字段**。
 - **对象身份语义不可序列化**：multiagent 靠 `HumanMessage` 对象身份判断"同一轮跨子轮"，无法塞进 context。
 - **轮内临时绑定 ≠ 请求级数据**：ContextVar 的 set/reset 对应轮内窗口，与 context 的请求级语义不同。
 
@@ -139,12 +139,12 @@ v0.8 经批复增加通用生命周期：Capability 的
 
 ---
 
-### 中间件工具钩子硬约束（v1.4）
+### Hook工具钩子硬约束（v1.4）
 
 - `before_tool` 只能放行或拒绝，不得修改 `tool_args` 影响执行。内核在整批调用进入钩子前深拷贝参数，每个钩子另收独立副本；执行也使用独立副本，批准 A 只执行 A。
 - `after_tool` 只读观察，不得修改 `tool_args`、`tool_result` 或 `state.messages`。内核逐钩子复制参数、结果、消息视图，丢弃消息改写；消息原对象身份保持不变。
 - `after_tool` 可以写 `state.context` 或外部存储，不算违规。此类写入不是事务，钩子失败不会回滚已发生的副作用。
-- `after_tool` 的普通异常逐项隔离，Trace 记录中间件类名、钩子名和异常类型（不记录可能含密钥的原始异常文本），继续后续钩子、结果事件和同批调用。取消继续传播，不当作普通异常吞掉。
+- `after_tool` 的普通异常逐项隔离，Trace 记录Hook类名、钩子名和异常类型（不记录可能含密钥的原始异常文本），继续后续钩子、结果事件和同批调用。取消继续传播，不当作普通异常吞掉。
 - 工具可设置 `timeout_seconds`（默认 `None`），内核只对 `run()` 施加协作式异步超时，不含审批等待；超时转失败，不自动重试，不能保证撤销外部写入。
 
 ## 6. 配置与密钥
@@ -220,7 +220,7 @@ v0.8 经批复增加通用生命周期：Capability 的
 ## 附：决策速查（和路线图对齐）
 
 - **第一原则**：内核极简，能力皆插件；加能力不改内核，内核禁止对具体能力 if 判断
-- 两个扩展点：工具（能力即工具）+ 中间件链；可选性只针对能力层
+- 两个扩展点：工具（能力即工具）+ Hook链；可选性只针对能力层
 - LLM：在线 API（DeepSeek）优先，Ollama 本地预留，统一 OpenAI 兼容接口
 - 检索模型（Embedding/Reranker）本地化
 - MCP：Client 为 P0，Server 自建为 P1（独立进程/同仓库）

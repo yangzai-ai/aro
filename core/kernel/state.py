@@ -1,7 +1,7 @@
 """Agent state definition.
 
 AgentState 是 LangGraph 循环的核心数据结构。
-它必须在最早定义，因为所有模块（loop、middleware、tools）都依赖它。
+它必须在最早定义，因为所有模块（loop、hook、tools）都依赖它。
 """
 
 from typing import Annotated, Any, Required, TypedDict, cast

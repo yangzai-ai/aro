@@ -145,8 +145,8 @@ async def test_reasoning_trace_isolation_and_nonstream_event(tmp_path, stream):
     try:
         state = await engine.run("hello", stream=stream, on_event=sink)
         assert state["messages"][-1].content == "answer"
-        assert engine.trace_middleware.get_latest_trace().agent_response == "answer"
-        assert "PRIVATE-THINKING" not in str(engine.trace_middleware.get_latest_trace().to_dict())
+        assert engine.trace_hook.get_latest_trace().agent_response == "answer"
+        assert "PRIVATE-THINKING" not in str(engine.trace_hook.get_latest_trace().to_dict())
         thinking = [e.data["delta"] for e in events if e.type == "reasoning"]
         assert "".join(thinking) == "PRIVATE-THINKING"
         if not stream:

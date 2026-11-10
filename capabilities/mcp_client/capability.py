@@ -8,7 +8,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.kernel.capability import Capability
-from core.kernel.middleware import Middleware
+from core.kernel.hook import Hook
 from core.tools.base import BaseTool, PermissionLevel
 
 from .client import ServerConfig, discover
@@ -76,7 +76,7 @@ class MCPClientCapability(Capability):
             raise RuntimeError("MCP discovery requires await AgentEngine.create(...)")
         return list(self._tools)
 
-    def middlewares(self) -> list[Middleware]:
+    def hooks(self) -> list[Hook]:
         return []
 
 
