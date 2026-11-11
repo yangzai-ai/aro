@@ -33,7 +33,12 @@ dependencies = [
     "typing-extensions>=4.12.0",
 ]
 
+[project.entry-points."aro.capabilities"]
+session_persistence = "capabilities.session_persistence.capability:get_capability"
+
 [project.optional-dependencies]
+session-sqlite = ["aiosqlite>=0.20,<1"]
+session-postgres = ["asyncpg>=0.30,<1"]
 documents = [
     "docxtpl>=0.20,<1",
 ]
@@ -61,6 +66,7 @@ dev = [
     "ruff>=0.6.0",
     "types-pyyaml>=6.0.0",
     "types-jsonschema>=4.23.0",
+    "asyncpg-stubs>=0.30,<1",
 ]
 
 [build-system]
@@ -142,6 +148,7 @@ addopts = [
     "--cov=capabilities.multiagent",
     "--cov=capabilities.mcp_client",
     "--cov=capabilities.doc_generation",
+    "--cov=capabilities.session_persistence",
     "--cov=api",
     "--cov-report=term-missing",
     "--cov-report=html",

@@ -1,0 +1,16 @@
+# 插件级 Engine 恢复示例；不开放浏览器旧 session_id 恢复。
+name: helpdesk-session-persistence
+capabilities:
+  helpdesk_tools:
+    module: projects.helpdesk.capability
+    data_source: mock
+  session_persistence:
+    backend: sqlite
+    sqlite_path: data/sessions/helpdesk.db
+    retention_days: 30
+    delete_on_session_close: false
+tools: [query_tickets, get_ticket_history, check_duplicate_tickets]
+system_prompt: |
+  你是 IT 支持助手。需要业务事实时调用只读工具，以最新工具结果为准。
+  业务源为模拟快照，持久化的是对话上下文，不是业务数据库。
+  工具执行状态未知时应先查询核实，不能声称成功或自动重放写入。

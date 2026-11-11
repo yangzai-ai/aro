@@ -244,4 +244,10 @@ uv pip install --python .venv/Scripts/python.exe -e ".[dev]"
 
 ### 外部插件与完整生命周期
 
-框架支持通过 Python `aro.capabilities` Entry Point 安装外部能力，仍由 YAML 显式启用。Hook 增加启动、会话加载、会话关闭和停止阶段；BaseTool 与 Capability 基类保持不变。配置示例、身份边界和宿主服务说明见[插件开发说明](docs/plugin-development.md)。v1.5 仅提供框架机制，会话持久化插件留待后续版本。
+框架支持通过 Python `aro.capabilities` Entry Point 安装外部能力，仍由 YAML 显式启用。Hook 增加启动、会话加载、会话关闭和停止阶段；BaseTool 与 Capability 基类保持不变。配置示例、身份边界和宿主服务说明见[插件开发说明](docs/plugin-development.md)。v1.6 新增标准会话持久化插件，支持 Memory、SQLite、PostgreSQL。
+
+### 会话持久化（v1.6）
+
+安装 SQLite 支持：`uv pip install --python .venv/Scripts/python.exe -e ".[session-sqlite]"`，在项目 YAML 启用 `session_persistence` 并指定 `backend: sqlite`、`sqlite_path: data/sessions/helpdesk.db`。默认关闭保留数据，保留期 30 天；Memory 默认后端不跨实例持久化，PostgreSQL 使用可选依赖 `.[session-postgres]` 和环境变量 `ARO_DB_URL`。
+
+宿主可用同一受信 `state.context.thread_id` 重建 Engine 恢复上下文，身份由框架校验。当前 API **不提供浏览器跨重启续聊**，也不会重放工具或恢复审批。完整配置、关闭/删除区别、运行示例与验证方法见[会话持久化说明](capabilities/session_persistence/README.md)；示例配置见 [agent_session_persistence.yml](projects/helpdesk/config/agent_session_persistence.yml)。

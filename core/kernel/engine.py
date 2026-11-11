@@ -22,6 +22,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from core.config_loader import AgentConfig, LLMConfig
 from core.kernel.capability import Capability
 from core.kernel.checkpoint import default_checkpointer
+from core.kernel.context import bind_thread_id
 from core.kernel.discovery import discover_capabilities
 from core.kernel.events import EventSink, event_scope
 from core.kernel.hook import Hook
@@ -403,7 +404,7 @@ class AgentEngine:
         self.trace_hook.start(state)
         frame = KernelRun(state)
         try:
-            with event_scope(on_event):
+            with bind_thread_id(runtime_context(state)["thread_id"]), event_scope(on_event):
                 state = await self.loop._run(
                     frame,
                     max_tool_rounds=max_tool_rounds,
