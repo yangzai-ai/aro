@@ -44,7 +44,7 @@
 | --- | --- | --- |
 | v1.4 | 工具执行管线最小加固（冻结参数、after_tool 只读与异常隔离、内核超时）✅ | D4 |
 | v1.5 | 框架通用化：entry point 自动发现、Hook 完整化、api/ 边界清理。不开发具体插件。✅ | D2 |
-| v1.6 | 插件开发：会话持久化插件、现有能力标准化、权限清单、`aro plugin` CLI | D2、D3 |
+| v1.6 | 插件开发：会话持久化插件（Memory/SQLite/PostgreSQL）✅ | D2、D3 |
 | v1.7 | 业务系统对接：SSE 事件协议版本化文档、Trace 查询 API、`@aro/client` + `@aro/react` | D7 |
 | v1.8 | MCP 网关 | D5 |
 | 之后 | 多实例部署、流式批量与 Webhook、`@aro/widget` | D8 |
