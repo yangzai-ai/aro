@@ -43,9 +43,10 @@
 | 阶段 | 内容 | 决策 |
 | --- | --- | --- |
 | v1.4 | 工具执行管线最小加固（冻结参数、after_tool 只读与异常隔离、内核超时）✅ | D4 |
-| v1.5 | Hook 完整化（补齐生命周期阶段 on_start/on_session_load/on_stop）+ 会话持久化 Capability（内存/SQLite/PostgreSQL） | D2、D3 |
-| v1.6 | 业务系统对接：SSE 事件协议版本化文档、Trace 查询 API、`@aro/client` + `@aro/react` | D7 |
-| v1.7 | 插件生态：entry point 发现、权限清单、`aro plugin` CLI、MCP client 插件与 MCP 网关 | D5、D6 |
+| v1.5 | 框架通用化：entry point 自动发现、Hook 完整化、api/ 边界清理。不开发具体插件。 | D2 |
+| v1.6 | 插件开发：会话持久化插件、现有能力标准化、权限清单、`aro plugin` CLI | D2、D3 |
+| v1.7 | 业务系统对接：SSE 事件协议版本化文档、Trace 查询 API、`@aro/client` + `@aro/react` | D7 |
+| v1.8 | MCP 网关 | D5 |
 | 之后 | 多实例部署、流式批量与 Webhook、`@aro/widget` | D8 |
 
 以下为完整主题清单。总原则不变：**P0 立骨架、P1 按需叠加、P2 真实需求驱动**；

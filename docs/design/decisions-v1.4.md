@@ -114,12 +114,18 @@ for hook in hooks:
 
 这个特殊性在文档里明确说明，但不影响整体架构的一致性。
 
-### 对后续迭代的影响
+### 对后续迭代的影响：分两步走
 
-- Trace 可以从内核移出，改成标准 Capability（v1.6+，非紧急）
-- 会话持久化直接用 Hook 实现，不需要单独的 `session_stores` 扩展组
-- 插件生态只需一个 entry point 组：`aro.capabilities`，不需要多套机制
-- v1.5 简报需要重写：不再是"通用装配 + 持久化"，而是"Hook 完整化 + 会话持久化 Capability"
+**v1.5 框架通用化**（先做）：让框架真正支持任意插件，不开发具体插件。三件事：
+1. **entry point 自动发现**：PluginLoader 支持 `importlib.metadata.entry_points(group="aro.capabilities")` 自动发现外部包，现有模块路径方式保留作回退
+2. **Hook 完整化**：补齐 on_start / on_session_load / on_session_close / on_stop 四个生命周期阶段，内核在正确时机调用
+3. **api/ 边界清理**：去除 api/ 对具体能力的直接 import（isinstance 检查），改用服务协议（Hook 上声明 `provides`），加 AST 边界测试
+
+做完后，任何人写一个外部包注册 entry point，就能被框架发现并加载，而 api/ 不需要认识这个包。
+
+**v1.6 插件开发**（后做）：会话持久化插件、现有能力标准化、权限清单、`aro plugin` CLI 等。
+
+**不再做**：把框架改造和插件开发混在一起。正确顺序是先让框架通用化，再开发插件。
 
 ## D3 审批跨重启：暂不改 interrupt
 
