@@ -1,0 +1,14 @@
+{
+  "name": "aro-workspace",
+  "private": true,
+  "workspaces": [
+    "packages/client",
+    "packages/react",
+    "frontend"
+  ],
+  "scripts": {
+    "build:packages": "npm run build -w @aro/client && npm run build -w @aro/react",
+    "test:packages": "npm run build:packages && npm test -w @aro/client && npm test -w @aro/react",
+    "build": "npm run build:packages && npm run build -w aro-frontend"
+  }
+}

@@ -7,13 +7,16 @@
     "dev": "vite --host 127.0.0.1",
     "test": "node --test tests/*.test.mjs",
     "build": "tsc -b && vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "predev": "npm run build:packages --prefix .."
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "@aro/client": "^1.0.0",
+    "@aro/react": "^1.0.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",

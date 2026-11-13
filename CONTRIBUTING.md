@@ -20,11 +20,10 @@ if (!(Test-Path .env)) { Copy-Item .env.example .env }
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe -m ruff check core capabilities api projects scripts tests
 .\.venv\Scripts\python.exe -m mypy core capabilities api projects scripts
-Set-Location frontend
 npm ci
-npm run test
+npm run test:packages
+npm test -w aro-frontend
 npm run build
-Set-Location ..
 ```
 
 真实模型与远端服务测试需要相应依赖、模型和环境配置；按测试声明启用，报告跳过原因。不要用缩短测试范围或削弱安全断言来掩盖失败。

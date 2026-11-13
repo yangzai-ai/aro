@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { ChatMessage, ReasoningBlock } from '../client/types';
+import { ChatMessage as AroChatMessage, ThinkingBlock } from '@aro/react';
+import type { ChatMessage } from '../client/types';
 import type { Expert } from './Sidebar';
 import { VoiceButton } from './VoiceButton';
 import { presets, type Preset } from '../theme/theme';
@@ -19,15 +20,6 @@ interface Props {
   experts: Expert[];
   selectedExpert: string | null;
   onSelectExpert: (name: string | null) => void;
-}
-
-function ReasoningDetails({ block, active }: { block: ReasoningBlock; active: boolean }) {
-  const [open, setOpen] = useState(active);
-  useEffect(() => { setOpen(active); }, [active]);
-  return <details className="reasoning-block" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
-    <summary title="浏览器从首个思考片段到正文或结束的观察用时，可能包含工具等待，并非模型纯计算时长">思考过程{block.agent ? ` (${block.agent})` : ''} · {active ? '正在思考' : '已思考'} {(block.duration_ms / 1000).toFixed(1)} 秒</summary>
-    <pre>{block.text}</pre>
-  </details>;
 }
 
 export function ChatWindow({ messages, busy, onSend, onStop, readOnly, status, preset, suggestion, onExperts, experts, selectedExpert, onSelectExpert }: Props) {
@@ -48,11 +40,11 @@ export function ChatWindow({ messages, busy, onSend, onStop, readOnly, status, p
         <div className="assistant-mark">A<span className="spark">✦</span></div><span className="eyebrow">思考 · 协作 · 执行</span><h3>你好，今天想解决什么？</h3>
         <p>内核极简，能力皆插件。工具执行留下证据，操作由你确认。</p>
       </div>}
-      {messages.map(message => <article className={`message ${message.role}`} key={message.id}>
-        <div className="message-label">{message.role === 'user' ? '你' : selectedExpert || '总控助手'}</div>
-        {message.role === 'assistant' && message.reasoning_blocks?.filter(block => block.text).map(block => <ReasoningDetails key={block.id} block={block} active={busy && message.id === messages[messages.length - 1]?.id && !block.complete} />)}
-        <div className="message-text">{message.text ? <Markdown skipHtml remarkPlugins={[remarkGfm]} components={{a: ({children}) => <span>{children}</span>, img: ({alt}) => <span>{alt}</span>}}>{message.text}</Markdown> : (busy ? '正在思考或等待工具结果…' : '本轮没有文本回复。')}</div>
-      </article>)}
+      {messages.map(message => <AroChatMessage key={message.id} role={message.role} content={message.text}
+        label={message.role === 'user' ? '你' : selectedExpert || '总控助手'} busy={busy}
+        beforeContent={message.role === 'assistant' && message.reasoning_blocks?.filter(block => block.text).map(block => <ThinkingBlock key={block.id} content={block.text} agent={block.agent} durationMs={block.duration_ms} active={busy && message.id === messages[messages.length - 1]?.id && !block.complete} />)}
+        renderContent={content => <Markdown skipHtml remarkPlugins={[remarkGfm]} components={{a: ({children}) => <span>{children}</span>, img: ({alt}) => <span>{alt}</span>}}>{content}</Markdown>}
+      />)}
       <div ref={bottom} />
     </div>
     <form onSubmit={submit} className="composer">

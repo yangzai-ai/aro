@@ -96,3 +96,8 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
+
+# JavaScript workspace dependencies and package artifacts
+node_modules/
+*.tgz
+packages/react/dist-example/

@@ -1,0 +1,4 @@
+.message { padding: 1rem; white-space: normal; }
+.reasoning-block pre, .step-content pre, .approval-card pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.steps { list-style: none; padding: 0; }
+.approval-card { border: 1px solid currentColor; padding: 1rem; }

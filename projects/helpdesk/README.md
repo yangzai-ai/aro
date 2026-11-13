@@ -70,9 +70,8 @@ $env:ARO_API_CONFIG='projects/helpdesk/config/agent_workbench_experts.yml'
 另开终端：
 
 ```powershell
-Set-Location frontend
 npm ci
-npm run dev
+npm run dev -w aro-frontend
 ```
 
 打开 <http://127.0.0.1:5173/>。服务端设置 ARO_API_TOKEN 时，页面填写同一访问令牌；它不是模型 API Key。构建后由后端托管的方法见根 README。

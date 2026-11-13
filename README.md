@@ -166,7 +166,8 @@ ARO_API_TOKEN=替换为你自己的随机令牌
 
 ```powershell
 # 3. 构建前端（产物由后端托管，无需单独起前端服务）
-Set-Location frontend; npm ci; npm run build; Set-Location ..
+npm ci
+npm run build
 
 # 4. 启动工作台（模拟数据 + 审批 + Word，不加载知识库）
 $env:ARO_API_CONFIG='projects/helpdesk/config/agent_workbench_light.yml'
@@ -251,3 +252,11 @@ uv pip install --python .venv/Scripts/python.exe -e ".[dev]"
 安装 SQLite 支持：`uv pip install --python .venv/Scripts/python.exe -e ".[session-sqlite]"`，在项目 YAML 启用 `session_persistence` 并指定 `backend: sqlite`、`sqlite_path: data/sessions/helpdesk.db`。默认关闭保留数据，保留期 30 天；Memory 默认后端不跨实例持久化，PostgreSQL 使用可选依赖 `.[session-postgres]` 和环境变量 `ARO_DB_URL`。
 
 宿主可用同一受信 `state.context.thread_id` 重建 Engine 恢复上下文，身份由框架校验。当前 API **不提供浏览器跨重启续聊**，也不会重放工具或恢复审批。完整配置、关闭/删除区别、运行示例与验证方法见[会话持久化说明](capabilities/session_persistence/README.md)；示例配置见 [agent_session_persistence.yml](projects/helpdesk/config/agent_session_persistence.yml)。
+
+### 业务前端集成（v1.7）
+
+正式事件字段、透传与鉴权边界见 [SSE v1 协议](docs/protocols/sse-events-v1.md)。[客户端](packages/client/README.md) 和 [React 组件](packages/react/README.md) 可独立使用；工作台作为它们的宿主示例。
+
+JavaScript 使用仓库根目录 npm workspaces 和 package-lock.json：`npm ci` → `npm run build`；开发为 `npm run dev -w aro-frontend`。组件测试 `npm run test:packages`，工作台测试 `npm test -w aro-frontend`。包未发布 npm，可先 pack tarball 在业务项目安装。
+
+聊天断线不会自动重发；Trace 查询只读取当前活跃会话保留的已结束记录（HTTP 最近一轮），不承诺历史审计或用户级鉴权。业务代理负责登录态和会话归属。

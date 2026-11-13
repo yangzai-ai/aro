@@ -112,7 +112,7 @@ export default function App() {
     const assistantId = crypto.randomUUID();
     // Timing measures observed reasoning events, excluding request/network startup.
     const reasoningTimes = new Map<string, { start: number; end?: number }>();
-    const reasoningId = (agent?: string, call?: string) => agent ? `agent:${agent}:${call || ''}` : 'main';
+    const reasoningId = (agent?: string, call?: string | null) => agent ? `agent:${agent}:${call || ''}` : 'main';
     const finishReasoning = (id?: string) => {
       const now = performance.now();
       for (const [key, timing] of reasoningTimes) if ((!id || id === key) && timing.end === undefined) timing.end = now;

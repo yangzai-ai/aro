@@ -18,6 +18,7 @@ from api.auth import require_auth
 from api.sessions import Session, SessionStore
 from api.settings import APISettings
 from api.sse import encode_event
+from api.traces import router as traces_router
 from core.config_loader import AgentConfig
 from core.kernel.engine import AgentEngine
 from core.kernel.events import ExecutionEvent
@@ -149,6 +150,8 @@ def create_app(
 
     application = FastAPI(title="ARO API", version="0.5.0", lifespan=lifespan)
     application.state.settings, application.state.sessions = configured, store
+    application.include_router(traces_router)
+    application.include_router(traces_router, prefix="/api", include_in_schema=False)
 
     @application.get("/health")
     @application.get("/api/health", include_in_schema=False)

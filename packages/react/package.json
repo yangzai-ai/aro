@@ -1,0 +1,45 @@
+{
+  "name": "@aro/react",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "ARO unstyled React integration components",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md",
+    "examples",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./styles.css": "./dist/styles/default.css"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-css.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "prepack": "npm run build",
+    "example": "vite examples --host 127.0.0.1",
+    "check:example": "tsc -p tsconfig.examples.json && vite build examples --outDir ../dist-example"
+  },
+  "devDependencies": {
+    "typescript": "~5.7.3",
+    "@types/react": "^18.3.18",
+    "esbuild": "^0.25.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@types/react-dom": "^18.3.5",
+    "react-test-renderer": "18.3.1",
+    "vite": "^6.4.1"
+  },
+  "dependencies": {
+    "@aro/client": "^1.0.0"
+  },
+  "peerDependencies": {
+    "react": ">=18 <20"
+  }
+}
